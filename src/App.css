@@ -292,6 +292,8 @@
   display: flex;
   justify-content: space-between;
   gap: 6px;
+  flex-wrap: wrap;
+  order: 2;
 }
 .left-bottom button {
   display: flex;
@@ -305,6 +307,49 @@
 }
 .left-bottom .remove-plan {
   color: #b9837a;
+}
+.floorplan-controls {
+  order: 1;
+  border-top: 1px solid #eeede8;
+  padding: 13px 16px;
+  overflow-y: auto;
+  max-height: 225px;
+}
+.floorplan-controls h3 {
+  margin: 0;
+  font:
+    700 12px "Space Grotesk",
+    sans-serif;
+  color: #353c3d;
+}
+.floorplan-controls p {
+  font-size: 10px;
+  line-height: 1.45;
+  color: #909997;
+  margin: 5px 0 10px;
+}
+.floorplan-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.floorplan-field-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #909997;
+  font-size: 10px;
+  font-weight: 700;
+}
+.floorplan-field-grid input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #e4e7e2;
+  background: #f8f9f6;
+  border-radius: 5px;
+  padding: 6px;
+  color: #323838;
+  font-size: 11px;
 }
 .add-grid {
   margin: 0 12px 11px;

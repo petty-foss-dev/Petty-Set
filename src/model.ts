@@ -54,6 +54,14 @@ export interface SetScene {
   shots: Shot[];
   shootOrder: string[];
   floorplan?: string;
+  floorplanPlacement?: {
+    x: number;
+    z: number;
+    width: number;
+    height: number;
+    rotation: number;
+    opacity: number;
+  };
 }
 
 export interface Project {
@@ -101,6 +109,20 @@ export function isProject(value: unknown): value is Project {
       (scene.floorplan !== undefined && !isString(scene.floorplan))
     )
       return false;
+    if (scene.floorplanPlacement !== undefined) {
+      const placement = scene.floorplanPlacement;
+      if (
+        !isRecord(placement) ||
+        !["x", "z", "width", "height", "rotation", "opacity"].every((key) =>
+          isFiniteNumber(placement[key]),
+        ) ||
+        (placement.width as number) <= 0 ||
+        (placement.height as number) <= 0 ||
+        (placement.opacity as number) < 0 ||
+        (placement.opacity as number) > 1
+      )
+        return false;
+    }
     sceneIds.add(scene.id);
     const items = new Map<string, ItemKind>();
     for (const item of scene.items) {
@@ -259,6 +281,39 @@ export function wallBetween(
     z: (start.z + end.z) / 2,
     width: Math.hypot(dx, dz),
     rotation: (Math.atan2(-dz, dx) * 180) / Math.PI,
+  };
+}
+
+export function wallEndpoints(item: SceneItem) {
+  const yaw = (item.rotation * Math.PI) / 180;
+  const halfX = (item.width / 2) * Math.cos(yaw);
+  const halfZ = -(item.width / 2) * Math.sin(yaw);
+  return [
+    { x: item.x - halfX, z: item.z - halfZ },
+    { x: item.x + halfX, z: item.z + halfZ },
+  ];
+}
+
+export function snapWallPoint(
+  point: { x: number; z: number },
+  items: SceneItem[],
+  tolerance = 0.45,
+) {
+  const endpoints = items
+    .filter((item) => item.kind === "wall" && !item.hidden)
+    .flatMap(wallEndpoints);
+  const nearest = endpoints.reduce<
+    { point: { x: number; z: number }; distance: number } | undefined
+  >((best, endpoint) => {
+    const distance = Math.hypot(endpoint.x - point.x, endpoint.z - point.z);
+    return !best || distance < best.distance
+      ? { point: endpoint, distance }
+      : best;
+  }, undefined);
+  if (nearest && nearest.distance <= tolerance) return nearest.point;
+  return {
+    x: Math.round(point.x * 4) / 4,
+    z: Math.round(point.z * 4) / 4,
   };
 }
 

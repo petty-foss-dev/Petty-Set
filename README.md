@@ -14,10 +14,10 @@ Open the address printed by Vite. The app stores the current project in this bro
 ## Current features
 
 - One film with multiple scenes; each scene has a separate editable 3D set.
-- Draw walls on a quarter-meter grid, add doorways and windows, and position blocks, tables, chairs, actors, cameras, and lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
+- Draw walls on a quarter-meter grid with endpoint snapping, add doorways and windows, and position blocks, tables, chairs, actors, cameras, and lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
 - Undo and redo project edits; duplicate, hide, and lock set objects.
 - Set actor positions and facing per shot, with marks visible on the plan.
-- Import an image floor plan as a set reference.
+- Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity.
 - Switch between orbiting 3D stage, top plan, and camera view.
 - Add shots with separate cameras; choose a sensor gate, focal length, aperture, focus distance, and shot aspect ratio. The camera view shows framing guides and approximate depth-of-field limits.
 - Arrange story and shoot order independently and export a shot-list CSV in either order.
@@ -30,7 +30,7 @@ This is an early editor, not yet a feature-complete Lensflare equivalent. The ne
 
 See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and build order.
 
-1. Modeling tools: connected walls, room scale controls, broader snapping, grouping, and a larger original asset catalog.
+1. Modeling tools: connected wall corners, room scale controls, broader snapping, grouping, and a larger original asset catalog.
 2. Cinematography: named camera bodies and lenses, visual depth of field, camera paths, and take variants.
 3. Performance planning: actor poses and animation library, blocking paths, lighting modifiers, power routing, and alternate plans.
 4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.

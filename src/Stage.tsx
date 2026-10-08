@@ -8,6 +8,7 @@ import {
   TransformControls,
 } from "@react-three/drei";
 import * as THREE from "three";
+import { snapWallPoint } from "./model";
 import type { SceneItem, SetScene, Shot } from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
@@ -366,10 +367,15 @@ function StageContent({
     start: { x: number; z: number };
     end: { x: number; z: number };
   } | null>(null);
-  const snap = (point: THREE.Vector3) => ({
-    x: Math.round(point.x * 4) / 4,
-    z: Math.round(point.z * 4) / 4,
-  });
+  const snap = (point: THREE.Vector3) => snapWallPoint(point, scene.items);
+  const floorplanPlacement = scene.floorplanPlacement ?? {
+    x: 0,
+    z: 0,
+    width: 10,
+    height: 10,
+    rotation: 0,
+    opacity: 0.65,
+  };
 
   const select = (event: ThreeEvent<PointerEvent>, id: string) => {
     event.stopPropagation();
@@ -466,10 +472,21 @@ function StageContent({
         </mesh>
       )}
       {floorTexture && (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
-          <planeGeometry args={[10, 10]} />
-          <meshBasicMaterial map={floorTexture} transparent opacity={0.65} />
-        </mesh>
+        <group
+          position={[floorplanPlacement.x, 0.012, floorplanPlacement.z]}
+          rotation={[0, (floorplanPlacement.rotation * Math.PI) / 180, 0]}
+        >
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry
+              args={[floorplanPlacement.width, floorplanPlacement.height]}
+            />
+            <meshBasicMaterial
+              map={floorTexture}
+              transparent
+              opacity={floorplanPlacement.opacity}
+            />
+          </mesh>
+        </group>
       )}
       {mode !== "camera" && (
         <Grid
@@ -507,7 +524,9 @@ function StageContent({
               key={item.id}
               position={[item.x, item.y, item.z]}
               rotation={[0, (item.rotation * Math.PI) / 180, 0]}
-              onPointerDown={(event) => select(event, item.id)}
+              onPointerDown={(event) => {
+                if (tool !== "wall") select(event, item.id);
+              }}
             >
               <ItemMesh item={item} />
             </group>

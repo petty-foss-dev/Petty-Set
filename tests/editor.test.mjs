@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { historyReducer, projectHistory } from "../src/history.ts";
-import { isProject, sampleProject, wallBetween } from "../src/model.ts";
+import {
+  isProject,
+  sampleProject,
+  snapWallPoint,
+  wallBetween,
+  wallEndpoints,
+} from "../src/model.ts";
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
 
@@ -44,6 +50,38 @@ test("drawn walls preserve world-space endpoints", () => {
   assert.equal(wall.z, 0);
   assert.equal(wall.width, 4);
   assert.equal(wall.rotation, 90);
+});
+
+test("wall drawing snaps to rotated wall endpoints before the grid", () => {
+  const wall = wallBetween({ x: 1, z: 2 }, { x: 1, z: -2 }, 1);
+  const endpoints = wallEndpoints(wall);
+  assert.ok(Math.abs(endpoints[0].x - 1) < 1e-9);
+  assert.ok(Math.abs(endpoints[0].z - 2) < 1e-9);
+  assert.ok(Math.abs(endpoints[1].x - 1) < 1e-9);
+  assert.ok(Math.abs(endpoints[1].z + 2) < 1e-9);
+  const snapped = snapWallPoint({ x: 1.28, z: -1.8 }, [wall]);
+  assert.ok(Math.abs(snapped.x - 1) < 1e-9);
+  assert.ok(Math.abs(snapped.z + 2) < 1e-9);
+  assert.deepEqual(snapWallPoint({ x: 2.38, z: 1.12 }, [wall]), {
+    x: 2.5,
+    z: 1,
+  });
+});
+
+test("project import validates floor plan placement", () => {
+  const project = sampleProject();
+  project.scenes[0].floorplan = "data:image/png;base64,AA==";
+  project.scenes[0].floorplanPlacement = {
+    x: 1,
+    z: -2,
+    width: 8,
+    height: 6,
+    rotation: 15,
+    opacity: 0.5,
+  };
+  assert.equal(isProject(project), true);
+  project.scenes[0].floorplanPlacement.width = -1;
+  assert.equal(isProject(project), false);
 });
 
 test("project import rejects broken camera and actor references", () => {

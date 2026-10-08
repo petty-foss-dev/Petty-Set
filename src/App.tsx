@@ -26,6 +26,7 @@ import {
   Square,
   Trash2,
   Redo2,
+  Ruler,
   Undo2,
   Upload,
   UserRound,
@@ -85,6 +86,7 @@ function App() {
   const [order, setOrder] = useState<"story" | "shoot">("story");
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showFloorplanControls, setShowFloorplanControls] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
   const captureRef = useRef<(() => string) | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -416,13 +418,50 @@ function App() {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () =>
-      updateScene((current) => ({
-        ...current,
-        floorplan: String(reader.result),
-      }));
+    reader.onload = () => {
+      const source = String(reader.result);
+      const image = new Image();
+      image.onload = () => {
+        updateScene((current) => ({
+          ...current,
+          floorplan: source,
+          floorplanPlacement: {
+            x: 0,
+            z: 0,
+            width: 10,
+            height: Number(
+              ((10 * image.naturalHeight) / image.naturalWidth).toFixed(2),
+            ),
+            rotation: 0,
+            opacity: 0.65,
+          },
+        }));
+        setShowFloorplanControls(true);
+        setMode("plan");
+      };
+      image.onerror = () => window.alert("This image could not be read.");
+      image.src = source;
+    };
     reader.readAsDataURL(file);
     event.target.value = "";
+  }
+
+  function updateFloorplanPlacement(
+    patch: Partial<NonNullable<SetScene["floorplanPlacement"]>>,
+  ) {
+    updateScene((current) => ({
+      ...current,
+      floorplanPlacement: {
+        x: 0,
+        z: 0,
+        width: 10,
+        height: 10,
+        rotation: 0,
+        opacity: 0.65,
+        ...current.floorplanPlacement,
+        ...patch,
+      },
+    }));
   }
 
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
@@ -673,19 +712,90 @@ function App() {
               {scene.floorplan ? "Replace floor plan" : "Import floor plan"}
             </button>
             {scene.floorplan && (
-              <button
-                className="remove-plan"
-                onClick={() =>
-                  updateScene((current) => ({
-                    ...current,
-                    floorplan: undefined,
-                  }))
-                }
-              >
-                Remove
-              </button>
+              <>
+                <button
+                  onClick={() =>
+                    setShowFloorplanControls(!showFloorplanControls)
+                  }
+                >
+                  <Ruler size={15} /> Scale
+                </button>
+                <button
+                  className="remove-plan"
+                  onClick={() => {
+                    updateScene((current) => ({
+                      ...current,
+                      floorplan: undefined,
+                      floorplanPlacement: undefined,
+                    }));
+                    setShowFloorplanControls(false);
+                  }}
+                >
+                  Remove
+                </button>
+              </>
             )}
           </div>
+          {scene.floorplan && showFloorplanControls && (
+            <div className="floorplan-controls">
+              <h3>Floor plan placement</h3>
+              <p>Match width and height to known dimensions in meters.</p>
+              <div className="floorplan-field-grid">
+                {(["width", "height", "x", "z", "rotation"] as const).map(
+                  (key) => (
+                    <label key={key}>
+                      <span>
+                        {key === "rotation"
+                          ? "Rotation °"
+                          : key === "width" || key === "height"
+                            ? `${key} m`
+                            : key.toUpperCase()}
+                      </span>
+                      <input
+                        type="number"
+                        step={key === "rotation" ? 1 : 0.1}
+                        min={
+                          key === "width" || key === "height" ? 0.1 : undefined
+                        }
+                        value={
+                          scene.floorplanPlacement?.[key] ??
+                          (key === "width" || key === "height" ? 10 : 0)
+                        }
+                        onChange={(event) =>
+                          updateFloorplanPlacement({
+                            [key]:
+                              key === "width" || key === "height"
+                                ? Math.max(0.1, Number(event.target.value))
+                                : Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                  ),
+                )}
+                <label>
+                  <span>Opacity %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={Math.round(
+                      (scene.floorplanPlacement?.opacity ?? 0.65) * 100,
+                    )}
+                    onChange={(event) =>
+                      updateFloorplanPlacement({
+                        opacity: Math.max(
+                          0,
+                          Math.min(1, Number(event.target.value) / 100),
+                        ),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+          )}
         </aside>
 
         <main className="main-area">
@@ -820,7 +930,7 @@ function App() {
             )}
             <div className="stage-hint">
               {tool === "wall" && mode === "plan"
-                ? "Drag on the plan to draw a wall · snaps to 0.25 m"
+                ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
                 : mode === "camera"
                   ? "Shot preview · select 3D stage to edit"
                   : "Click an object to select · drag the arrows to move · scroll to zoom"}
