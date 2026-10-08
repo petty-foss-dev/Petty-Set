@@ -58,10 +58,12 @@ function CameraRig({
 
 function Actor({ item }: { item: SceneItem }) {
   const group = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
+  const time = useRef(0);
+  useFrame((_, delta) => {
+    time.current += delta;
     if (group.current)
       group.current.rotation.z =
-        Math.sin(clock.elapsedTime * 1.8 + item.x) * 0.012;
+        Math.sin(time.current * 1.8 + item.x) * 0.012;
   });
   return (
     <group ref={group}>
@@ -359,7 +361,7 @@ export default function Stage(props: Props) {
   const { captureRef, ...content } = props;
   return (
     <Canvas
-      shadows
+      shadows={{ type: THREE.PCFShadowMap }}
       camera={{ position: [8, 7, 9], fov: 50 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       onCreated={({ gl }) => {
