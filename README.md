@@ -25,6 +25,8 @@ Open the address printed by Vite. The app stores the current project in this bro
 
 This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
 
+See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and build order.
+
 1. Modeling tools: drawn walls, openings, room scale controls, object snapping, grouping, undo/redo, and a larger original asset catalog.
 2. Cinematography: more sensors and lenses, focus and depth of field, framelines, camera paths, and take variants.
 3. Performance planning: actor poses and animation library, blocking paths, lighting modifiers, power routing, and alternate plans.
