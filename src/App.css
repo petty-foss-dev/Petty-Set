@@ -71,6 +71,11 @@
   align-items: center;
   gap: 8px;
 }
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
 .topbar button,
 .viewport-toolbar button,
 .shot-panel button,
@@ -366,6 +371,28 @@
   color: #333a3b;
   box-shadow: 0 1px 5px #27312e16;
 }
+.tool-switch {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+}
+.tool-switch button {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: transparent;
+  color: #75807d;
+  font-size: 11px;
+  font-weight: 700;
+}
+.tool-switch button.active {
+  background: #fff0e5;
+  color: #c16d39;
+}
 .view-label {
   font-size: 10px;
   letter-spacing: 1.3px;
@@ -548,6 +575,47 @@
     700 18px "Space Grotesk",
     sans-serif;
 }
+.inspector-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+.inspector-actions button {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: #f3f4f1;
+  color: #737d79;
+}
+.inspector-actions button:hover {
+  background: #fff0e5;
+  color: #c16d39;
+}
+.inspector-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.inspector-fields:disabled {
+  opacity: 0.58;
+}
+.actor-mark-note {
+  margin-top: 18px;
+  color: #7d8783;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.actor-mark-note button {
+  display: block;
+  padding: 4px 0 0;
+  color: #cf7742;
+  background: transparent;
+  font-size: 10px;
+  font-weight: 700;
+}
 .field-section {
   margin-top: 27px;
 }
@@ -575,6 +643,7 @@
 }
 .field-grid input,
 .full-field input:not([type="range"]):not([type="color"]),
+.full-field select,
 .shot-inspector input,
 .shot-inspector textarea {
   width: 100%;
@@ -586,6 +655,9 @@
   color: #323838;
   font-size: 12px;
   font-weight: 600;
+}
+.opening-fields {
+  margin-top: 12px;
 }
 .full-field {
   margin-top: 12px;
@@ -697,6 +769,9 @@
   .project-title {
     width: 150px;
   }
+  .history-actions {
+    gap: 0;
+  }
   .workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -731,6 +806,13 @@
   .mode-switch button {
     font-size: 10px;
     padding: 7px;
+  }
+  .tool-switch {
+    margin-left: 4px;
+  }
+  .tool-switch button {
+    font-size: 0;
+    padding: 0 7px;
   }
   .shot-panel {
     height: 201px;

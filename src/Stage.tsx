@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import {
@@ -17,8 +17,13 @@ interface Props {
   shot?: Shot;
   selectedId?: string;
   mode: ViewMode;
+  tool: "select" | "wall";
   onSelect: (id?: string) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
+  onAddWall: (
+    start: { x: number; z: number },
+    end: { x: number; z: number },
+  ) => void;
   captureRef: React.MutableRefObject<(() => string) | null>;
 }
 
@@ -62,11 +67,18 @@ function Actor({ item }: { item: SceneItem }) {
   useFrame((_, delta) => {
     time.current += delta;
     if (group.current)
-      group.current.rotation.z =
-        Math.sin(time.current * 1.8 + item.x) * 0.012;
+      group.current.rotation.z = Math.sin(time.current * 1.8 + item.x) * 0.012;
   });
   return (
     <group ref={group}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
+        <ringGeometry args={[0.34, 0.39, 32]} />
+        <meshBasicMaterial color="#de8248" side={THREE.DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0.03, -0.48]} rotation={[-Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[0.12, 0.24, 3]} />
+        <meshBasicMaterial color="#de8248" />
+      </mesh>
       <mesh position={[0, 1.37, 0]} castShadow>
         <sphereGeometry args={[0.22, 20, 16]} />
         <meshStandardMaterial color="#c99872" roughness={0.9} />
@@ -92,13 +104,75 @@ function ItemMesh({ item }: { item: SceneItem }) {
     <meshStandardMaterial color={color} roughness={0.72} />
   );
   switch (item.kind) {
-    case "wall":
-      return (
-        <mesh position={[0, item.height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[item.width, item.height, item.depth]} />
-          {material("#aeb4b5")}
-        </mesh>
+    case "wall": {
+      const opening = item.opening;
+      if (!opening)
+        return (
+          <mesh position={[0, item.height / 2, 0]} castShadow receiveShadow>
+            <boxGeometry args={[item.width, item.height, item.depth]} />
+            {material("#aeb4b5")}
+          </mesh>
+        );
+      const apertureWidth = Math.max(
+        0.1,
+        Math.min(opening.width, item.width - 0.1),
       );
+      const apertureCenter = Math.max(
+        -item.width / 2 + apertureWidth / 2,
+        Math.min(item.width / 2 - apertureWidth / 2, opening.offset),
+      );
+      const left = apertureCenter - apertureWidth / 2;
+      const right = apertureCenter + apertureWidth / 2;
+      const sill =
+        opening.type === "door"
+          ? 0
+          : Math.max(0, Math.min(opening.sill, item.height - 0.1));
+      const apertureHeight = Math.max(
+        0.1,
+        Math.min(opening.height, item.height - sill),
+      );
+      const headerHeight = item.height - sill - apertureHeight;
+      const segments = [
+        {
+          width: left + item.width / 2,
+          height: item.height,
+          x: (left - item.width / 2) / 2,
+          y: item.height / 2,
+        },
+        {
+          width: item.width / 2 - right,
+          height: item.height,
+          x: (right + item.width / 2) / 2,
+          y: item.height / 2,
+        },
+        { width: apertureWidth, height: sill, x: apertureCenter, y: sill / 2 },
+        {
+          width: apertureWidth,
+          height: headerHeight,
+          x: apertureCenter,
+          y: sill + apertureHeight + headerHeight / 2,
+        },
+      ];
+      return (
+        <group>
+          {segments
+            .filter((segment) => segment.width > 0.01 && segment.height > 0.01)
+            .map((segment, index) => (
+              <mesh
+                key={index}
+                position={[segment.x, segment.y, 0]}
+                castShadow
+                receiveShadow
+              >
+                <boxGeometry
+                  args={[segment.width, segment.height, item.depth]}
+                />
+                {material("#aeb4b5")}
+              </mesh>
+            ))}
+        </group>
+      );
+    }
     case "box":
       return (
         <mesh position={[0, item.height / 2, 0]} castShadow receiveShadow>
@@ -256,8 +330,10 @@ function StageContent({
   shot,
   selectedId,
   mode,
+  tool,
   onSelect,
   onMove,
+  onAddWall,
 }: Omit<Props, "captureRef">) {
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
   const floorTexture = useMemo(() => {
@@ -266,6 +342,14 @@ function StageContent({
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
   }, [scene.floorplan]);
+  const [wallDraft, setWallDraft] = useState<{
+    start: { x: number; z: number };
+    end: { x: number; z: number };
+  } | null>(null);
+  const snap = (point: THREE.Vector3) => ({
+    x: Math.round(point.x * 4) / 4,
+    z: Math.round(point.z * 4) / 4,
+  });
 
   const select = (event: ThreeEvent<PointerEvent>, id: string) => {
     event.stopPropagation();
@@ -283,7 +367,7 @@ function StageContent({
         shadow-mapSize={[1024, 1024]}
       />
       {scene.items
-        .filter((item) => item.kind === "light")
+        .filter((item) => item.kind === "light" && !item.hidden)
         .map((item) => (
           <spotLight
             key={`light-${item.id}`}
@@ -298,11 +382,65 @@ function StageContent({
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
-        onPointerDown={() => onSelect(undefined)}
+        onPointerDown={(event) => {
+          if (tool === "wall" && mode === "plan") {
+            event.stopPropagation();
+            (event.target as Element).setPointerCapture(event.pointerId);
+            const start = snap(event.point);
+            setWallDraft({ start, end: start });
+          } else onSelect(undefined);
+        }}
+        onPointerMove={(event) => {
+          if (wallDraft) setWallDraft({ ...wallDraft, end: snap(event.point) });
+        }}
+        onPointerUp={(event) => {
+          if (!wallDraft) return;
+          (event.target as Element).releasePointerCapture(event.pointerId);
+          const end = snap(event.point);
+          if (
+            Math.hypot(end.x - wallDraft.start.x, end.z - wallDraft.start.z) >=
+            0.25
+          )
+            onAddWall(wallDraft.start, end);
+          setWallDraft(null);
+        }}
+        onPointerCancel={() => setWallDraft(null)}
       >
         <planeGeometry args={[100, 100]} />
         <meshStandardMaterial color="#d7d7d0" roughness={1} />
       </mesh>
+      {wallDraft && (
+        <mesh
+          position={[
+            (wallDraft.start.x + wallDraft.end.x) / 2,
+            1.4,
+            (wallDraft.start.z + wallDraft.end.z) / 2,
+          ]}
+          rotation={[
+            0,
+            Math.atan2(
+              wallDraft.start.z - wallDraft.end.z,
+              wallDraft.end.x - wallDraft.start.x,
+            ),
+            0,
+          ]}
+        >
+          <boxGeometry
+            args={[
+              Math.max(
+                0.02,
+                Math.hypot(
+                  wallDraft.end.x - wallDraft.start.x,
+                  wallDraft.end.z - wallDraft.start.z,
+                ),
+              ),
+              2.8,
+              0.12,
+            ]}
+          />
+          <meshBasicMaterial color="#eb8950" transparent opacity={0.5} />
+        </mesh>
+      )}
       {floorTexture && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0]}>
           <planeGeometry args={[10, 10]} />
@@ -324,9 +462,15 @@ function StageContent({
         />
       )}
       {scene.items
-        .filter((item) => mode !== "camera" || item.id !== cameraItem?.id)
+        .filter(
+          (item) =>
+            !item.hidden && (mode !== "camera" || item.id !== cameraItem?.id),
+        )
         .map((item) =>
-          item.id === selectedId && mode !== "camera" ? (
+          item.id === selectedId &&
+          mode !== "camera" &&
+          (tool === "select" || mode !== "plan") &&
+          !item.locked ? (
             <SelectedObject
               key={item.id}
               item={item}
@@ -346,7 +490,7 @@ function StageContent({
           ),
         )}
       <OrbitControls
-        enabled={mode !== "camera"}
+        enabled={mode !== "camera" && tool !== "wall"}
         enableRotate={mode !== "plan"}
         maxPolarAngle={Math.PI / 2.02}
         minDistance={2}

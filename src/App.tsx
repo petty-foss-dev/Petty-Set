@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import type { ChangeEvent, SetStateAction } from "react";
 import {
   Camera,
   ChevronDown,
   Clapperboard,
   Download,
+  Copy,
+  Eye,
+  EyeOff,
   FileImage,
   FileText,
   Focus,
@@ -12,12 +15,18 @@ import {
   LampDesk,
   LayoutGrid,
   Lightbulb,
+  Lock,
+  LockOpen,
   Menu,
   Move3D,
+  MousePointer2,
+  PenLine,
   Plus,
   Save,
   Square,
   Trash2,
+  Redo2,
+  Undo2,
   Upload,
   UserRound,
   Video,
@@ -25,8 +34,9 @@ import {
 } from "lucide-react";
 import Stage from "./Stage";
 import type { ViewMode } from "./Stage";
-import { id, loadProject, makeItem } from "./model";
+import { id, isProject, loadProject, makeItem, wallBetween } from "./model";
 import type { ItemKind, Project, SceneItem, SetScene, Shot } from "./model";
+import { historyReducer, projectHistory } from "./history";
 import "./App.css";
 
 const itemIcons: Record<ItemKind, typeof Square> = {
@@ -58,13 +68,17 @@ function download(name: string, contents: string, type: string) {
 }
 
 function App() {
-  const [project, setProject] = useState<Project>(loadProject);
+  const [history, dispatch] = useReducer(historyReducer, undefined, () =>
+    projectHistory(loadProject()),
+  );
+  const project = history.present;
   const [sceneId, setSceneId] = useState(project.scenes[0].id);
   const [shotId, setShotId] = useState<string | undefined>(
     project.scenes[0].shots[0]?.id,
   );
   const [selectedId, setSelectedId] = useState<string>();
   const [mode, setMode] = useState<ViewMode>("stage");
+  const [tool, setTool] = useState<"select" | "wall">("select");
   const [order, setOrder] = useState<"story" | "shoot">("story");
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -76,7 +90,15 @@ function App() {
     project.scenes.find((value) => value.id === sceneId) ?? project.scenes[0];
   const shot =
     scene.shots.find((value) => value.id === shotId) ?? scene.shots[0];
-  const selected = scene.items.find((value) => value.id === selectedId);
+  const stageScene = {
+    ...scene,
+    items: scene.items.map((item) =>
+      item.kind === "actor" && shot?.actorMarks?.[item.id]
+        ? { ...item, ...shot.actorMarks[item.id] }
+        : item,
+    ),
+  };
+  const selected = stageScene.items.find((value) => value.id === selectedId);
   const orderedShots =
     order === "story"
       ? scene.shots
@@ -88,22 +110,79 @@ function App() {
     localStorage.setItem("petty-set-project", JSON.stringify(project));
   }, [project]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z")
+        return;
+      const target = event.target as HTMLElement;
+      if (target.closest("input, textarea, [contenteditable]")) return;
+      event.preventDefault();
+      dispatch({ type: event.shiftKey ? "redo" : "undo" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  function setProject(update: SetStateAction<Project>) {
+    dispatch({
+      type: "edit",
+      update: typeof update === "function" ? update : () => update,
+    });
+  }
+
   function updateScene(fn: (scene: SetScene) => SetScene) {
-    setProject((current) => ({
-      ...current,
-      scenes: current.scenes.map((value) =>
-        value.id === scene.id ? fn(value) : value,
-      ),
-    }));
+    setProject((current) => {
+      const index = current.scenes.findIndex((value) => value.id === scene.id);
+      if (index < 0) return current;
+      const updated = fn(current.scenes[index]);
+      if (updated === current.scenes[index]) return current;
+      const scenes = [...current.scenes];
+      scenes[index] = updated;
+      return { ...current, scenes };
+    });
   }
 
   function updateItem(id: string, patch: Partial<SceneItem>) {
-    updateScene((current) => ({
-      ...current,
-      items: current.items.map((item) =>
-        item.id === id ? { ...item, ...patch } : item,
-      ),
-    }));
+    const source = scene.items.find((item) => item.id === id);
+    if (
+      source?.kind === "actor" &&
+      shot &&
+      !source.locked &&
+      ["x", "y", "z", "rotation"].some((key) => key in patch)
+    ) {
+      const currentMark = shot.actorMarks?.[id] ?? {
+        x: source.x,
+        y: source.y,
+        z: source.z,
+        rotation: source.rotation,
+      };
+      const mark = {
+        x: patch.x ?? currentMark.x,
+        y: patch.y ?? currentMark.y,
+        z: patch.z ?? currentMark.z,
+        rotation: patch.rotation ?? currentMark.rotation,
+      };
+      updateScene((current) => ({
+        ...current,
+        shots: current.shots.map((value) =>
+          value.id === shot.id
+            ? { ...value, actorMarks: { ...value.actorMarks, [id]: mark } }
+            : value,
+        ),
+      }));
+      return;
+    }
+    updateScene((current) => {
+      const item = current.items.find((value) => value.id === id);
+      if (!item || (item.locked && !("locked" in patch || "hidden" in patch)))
+        return current;
+      return {
+        ...current,
+        items: current.items.map((value) =>
+          value.id === id ? { ...value, ...patch } : value,
+        ),
+      };
+    });
   }
 
   function addItem(kind: ItemKind) {
@@ -116,6 +195,68 @@ function App() {
     setMode("stage");
     setShowAdd(false);
     setMobilePanel("right");
+  }
+
+  function addWall(
+    start: { x: number; z: number },
+    end: { x: number; z: number },
+  ) {
+    const wall = wallBetween(
+      start,
+      end,
+      scene.items.filter((item) => item.kind === "wall").length + 1,
+    );
+    updateScene((current) => ({ ...current, items: [...current.items, wall] }));
+    setSelectedId(wall.id);
+  }
+
+  function duplicateSelected() {
+    if (!selected) return;
+    const copy: SceneItem = {
+      ...selected,
+      id: id(),
+      name: `${selected.name} copy`,
+      x: selected.x + 0.5,
+      z: selected.z + 0.5,
+      hidden: false,
+      locked: false,
+    };
+    updateScene((current) => ({ ...current, items: [...current.items, copy] }));
+    setSelectedId(copy.id);
+  }
+
+  function deleteSelected() {
+    if (!selected) return;
+    const linkedShots = scene.shots.filter(
+      (value) => value.cameraId === selected.id,
+    );
+    if (
+      linkedShots.length &&
+      !window.confirm(
+        `Deleting this camera will also delete ${linkedShots.length} linked shot${linkedShots.length === 1 ? "" : "s"}. Continue?`,
+      )
+    )
+      return;
+    updateScene((current) => ({
+      ...current,
+      items: current.items.filter((item) => item.id !== selected.id),
+      shots: current.shots
+        .filter((value) => value.cameraId !== selected.id)
+        .map((value) => {
+          if (!value.actorMarks?.[selected.id]) return value;
+          const actorMarks = { ...value.actorMarks };
+          delete actorMarks[selected.id];
+          return { ...value, actorMarks };
+        }),
+      shootOrder: current.shootOrder.filter(
+        (value) => !linkedShots.some((shot) => shot.id === value),
+      ),
+    }));
+    setSelectedId(undefined);
+    if (shot?.cameraId === selected.id)
+      setShotId(
+        scene.shots.find((value) => value.cameraId !== selected.id)?.id,
+      );
   }
 
   function addShot() {
@@ -136,6 +277,17 @@ function App() {
       cameraId: camera.id,
       notes: "",
       duration: 5,
+      actorMarks: Object.fromEntries(
+        scene.items
+          .filter((item) => item.kind === "actor")
+          .map((item) => {
+            const mark = shot?.actorMarks?.[item.id] ?? item;
+            return [
+              item.id,
+              { x: mark.x, y: mark.y, z: mark.z, rotation: mark.rotation },
+            ];
+          }),
+      ),
     };
     updateScene((current) => ({
       ...current,
@@ -241,14 +393,9 @@ function App() {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      const value = JSON.parse(await file.text()) as Project;
-      if (
-        value.version !== 1 ||
-        !Array.isArray(value.scenes) ||
-        !value.scenes.length
-      )
-        throw new Error("Unsupported project");
-      setProject(value);
+      const value: unknown = JSON.parse(await file.text());
+      if (!isProject(value)) throw new Error("Unsupported project");
+      dispatch({ type: "replace", project: value });
       setSceneId(value.scenes[0].id);
       setShotId(value.scenes[0].shots[0]?.id);
       setSelectedId(undefined);
@@ -293,6 +440,26 @@ function App() {
             setProject((current) => ({ ...current, name: event.target.value }))
           }
         />
+        <div className="history-actions">
+          <button
+            className="icon-button"
+            aria-label="Undo"
+            title="Undo (⌘Z)"
+            disabled={!history.past.length}
+            onClick={() => dispatch({ type: "undo" })}
+          >
+            <Undo2 size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Redo"
+            title="Redo (⌘⇧Z)"
+            disabled={!history.future.length}
+            onClick={() => dispatch({ type: "redo" })}
+          >
+            <Redo2 size={17} />
+          </button>
+        </div>
         <span className="save-status">
           <Save size={14} />
           Saved locally
@@ -497,7 +664,10 @@ function App() {
             <div className="mode-switch">
               <button
                 className={mode === "stage" ? "active" : ""}
-                onClick={() => setMode("stage")}
+                onClick={() => {
+                  setMode("stage");
+                  setTool("select");
+                }}
               >
                 <Move3D size={16} /> 3D stage
               </button>
@@ -509,10 +679,35 @@ function App() {
               </button>
               <button
                 className={mode === "camera" ? "active" : ""}
-                onClick={() => setMode("camera")}
+                onClick={() => {
+                  setMode("camera");
+                  setTool("select");
+                }}
                 disabled={!shot}
               >
                 <Camera size={16} /> Camera
+              </button>
+            </div>
+            <div className="tool-switch">
+              <button
+                className={tool === "select" ? "active" : ""}
+                aria-label="Select tool"
+                title="Select and move"
+                onClick={() => setTool("select")}
+              >
+                <MousePointer2 size={15} />
+              </button>
+              <button
+                className={tool === "wall" ? "active" : ""}
+                aria-label="Draw wall"
+                title="Draw walls in plan view"
+                onClick={() => {
+                  setTool("wall");
+                  setMode("plan");
+                  setSelectedId(undefined);
+                }}
+              >
+                <PenLine size={15} /> Draw wall
               </button>
             </div>
             <div className="view-label">
@@ -534,18 +729,22 @@ function App() {
           </div>
           <div className="stage-wrap">
             <Stage
-              scene={scene}
+              scene={stageScene}
               shot={shot}
               selectedId={selectedId}
               mode={mode}
+              tool={tool}
               onSelect={setSelectedId}
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
+              onAddWall={addWall}
               captureRef={captureRef}
             />
             <div className="stage-hint">
-              {mode === "camera"
-                ? "Shot preview · select 3D stage to edit"
-                : "Click an object to select · drag the arrows to move · scroll to zoom"}
+              {tool === "wall" && mode === "plan"
+                ? "Drag on the plan to draw a wall · snaps to 0.25 m"
+                : mode === "camera"
+                  ? "Shot preview · select 3D stage to edit"
+                  : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
             {mode === "camera" && (
               <div className="camera-actions">
@@ -645,166 +844,272 @@ function App() {
                 className="inspector-name"
                 aria-label="Object name"
                 value={selected.name}
+                disabled={selected.locked}
                 onChange={(event) =>
                   updateItem(selected.id, { name: event.target.value })
                 }
               />
-              <div className="field-section">
-                <h3>Transform</h3>
-                <div className="field-grid">
-                  {(["x", "y", "z"] as const).map((key) => (
-                    <label key={key}>
-                      <span>{key.toUpperCase()}</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={Number(selected[key].toFixed(2))}
-                        onChange={(event) =>
-                          updateItem(selected.id, {
-                            [key]: Number(event.target.value),
-                          })
+              <div className="inspector-actions">
+                <button
+                  aria-label="Duplicate object"
+                  title="Duplicate object"
+                  onClick={duplicateSelected}
+                >
+                  <Copy size={16} />
+                </button>
+                <button
+                  aria-label={selected.hidden ? "Show object" : "Hide object"}
+                  title={selected.hidden ? "Show object" : "Hide object"}
+                  onClick={() =>
+                    updateItem(selected.id, { hidden: !selected.hidden })
+                  }
+                >
+                  {selected.hidden ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+                <button
+                  aria-label={selected.locked ? "Unlock object" : "Lock object"}
+                  title={selected.locked ? "Unlock object" : "Lock object"}
+                  onClick={() =>
+                    updateItem(selected.id, { locked: !selected.locked })
+                  }
+                >
+                  {selected.locked ? (
+                    <Lock size={16} />
+                  ) : (
+                    <LockOpen size={16} />
+                  )}
+                </button>
+              </div>
+              <fieldset className="inspector-fields" disabled={selected.locked}>
+                {selected.kind === "actor" && shot && (
+                  <div className="actor-mark-note">
+                    Position and facing are saved for this shot.
+                    {shot.actorMarks?.[selected.id] && (
+                      <button
+                        onClick={() =>
+                          updateScene((current) => ({
+                            ...current,
+                            shots: current.shots.map((value) => {
+                              if (value.id !== shot.id) return value;
+                              const actorMarks = { ...value.actorMarks };
+                              delete actorMarks[selected.id];
+                              return { ...value, actorMarks };
+                            }),
+                          }))
                         }
-                      />
-                    </label>
-                  ))}
-                </div>
-                <label className="full-field">
-                  <span>Rotation</span>
-                  <div>
-                    <input
-                      type="number"
-                      value={selected.rotation}
-                      onChange={(event) =>
-                        updateItem(selected.id, {
-                          rotation: Number(event.target.value),
-                        })
-                      }
-                    />
-                    <em>°</em>
+                      >
+                        Reset mark
+                      </button>
+                    )}
                   </div>
-                </label>
-              </div>
-              <div className="field-section">
-                <h3>Dimensions</h3>
-                <div className="field-grid">
-                  {(["width", "height", "depth"] as const).map((key) => (
-                    <label key={key}>
-                      <span>{key}</span>
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.1"
-                        value={selected[key]}
-                        onChange={(event) =>
-                          updateItem(selected.id, {
-                            [key]: Math.max(0.1, Number(event.target.value)),
-                          })
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {selected.kind === "camera" && (
+                )}
                 <div className="field-section">
-                  <h3>Lens</h3>
+                  <h3>Transform</h3>
+                  <div className="field-grid">
+                    {(["x", "y", "z"] as const).map((key) => (
+                      <label key={key}>
+                        <span>{key.toUpperCase()}</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={Number(selected[key].toFixed(2))}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              [key]: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
                   <label className="full-field">
-                    <span>Focal length</span>
+                    <span>Rotation</span>
                     <div>
                       <input
                         type="number"
-                        min="8"
-                        max="400"
-                        value={selected.focalLength ?? 35}
+                        value={selected.rotation}
                         onChange={(event) =>
                           updateItem(selected.id, {
-                            focalLength: Number(event.target.value),
-                          })
-                        }
-                      />
-                      <em>mm</em>
-                    </div>
-                  </label>
-                  <p className="field-note">Super 35 sensor · 24 mm height</p>
-                </div>
-              )}
-              {selected.kind === "light" && (
-                <div className="field-section">
-                  <h3>Light</h3>
-                  <label className="full-field">
-                    <span>Intensity</span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="8"
-                      step=".1"
-                      value={selected.intensity ?? 2}
-                      onChange={(event) =>
-                        updateItem(selected.id, {
-                          intensity: Number(event.target.value),
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="full-field">
-                    <span>Beam spread</span>
-                    <div>
-                      <input
-                        type="number"
-                        min="5"
-                        max="160"
-                        value={selected.spread ?? 45}
-                        onChange={(event) =>
-                          updateItem(selected.id, {
-                            spread: Number(event.target.value),
+                            rotation: Number(event.target.value),
                           })
                         }
                       />
                       <em>°</em>
                     </div>
                   </label>
-                  <label className="full-field">
-                    <span>Color</span>
-                    <input
-                      type="color"
-                      value={selected.color ?? "#fff4df"}
-                      onChange={(event) =>
-                        updateItem(selected.id, { color: event.target.value })
-                      }
-                    />
-                  </label>
-                  <p className="field-note">
-                    Preview lighting is illustrative, not photometric.
-                  </p>
                 </div>
-              )}
-              <button
-                className="delete-button"
-                onClick={() => {
-                  updateScene((current) => ({
-                    ...current,
-                    items: current.items.filter(
-                      (item) => item.id !== selected.id,
-                    ),
-                    shots: current.shots.filter(
-                      (value) => value.cameraId !== selected.id,
-                    ),
-                    shootOrder: current.shootOrder.filter((value) =>
-                      current.shots.some(
-                        (shot) =>
-                          shot.id === value && shot.cameraId !== selected.id,
-                      ),
-                    ),
-                  }));
-                  setSelectedId(undefined);
-                  if (shot?.cameraId === selected.id)
-                    setShotId(
-                      scene.shots.find(
-                        (value) => value.cameraId !== selected.id,
-                      )?.id,
-                    );
-                }}
-              >
+                <div className="field-section">
+                  <h3>Dimensions</h3>
+                  <div className="field-grid">
+                    {(["width", "height", "depth"] as const).map((key) => (
+                      <label key={key}>
+                        <span>{key}</span>
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="0.1"
+                          value={selected[key]}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              [key]: Math.max(0.1, Number(event.target.value)),
+                            })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {selected.kind === "wall" && (
+                  <div className="field-section">
+                    <h3>Opening</h3>
+                    <label className="full-field">
+                      <span>Type</span>
+                      <select
+                        value={selected.opening?.type ?? "none"}
+                        onChange={(event) => {
+                          const type = event.target.value;
+                          updateItem(selected.id, {
+                            opening:
+                              type === "none"
+                                ? undefined
+                                : {
+                                    type: type as "door" | "window",
+                                    offset: 0,
+                                    width: Math.min(1, selected.width - 0.1),
+                                    height: type === "door" ? 2.1 : 1,
+                                    sill: type === "door" ? 0 : 1,
+                                  },
+                          });
+                        }}
+                      >
+                        <option value="none">None</option>
+                        <option value="door">Doorway</option>
+                        <option value="window">Window</option>
+                      </select>
+                    </label>
+                    {selected.opening && (
+                      <>
+                        <div className="field-grid opening-fields">
+                          {(["offset", "width", "height"] as const).map(
+                            (key) => (
+                              <label key={key}>
+                                <span>{key}</span>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min={key === "offset" ? undefined : 0.1}
+                                  value={selected.opening![key]}
+                                  onChange={(event) =>
+                                    updateItem(selected.id, {
+                                      opening: {
+                                        ...selected.opening!,
+                                        [key]: Number(event.target.value),
+                                      },
+                                    })
+                                  }
+                                />
+                              </label>
+                            ),
+                          )}
+                        </div>
+                        {selected.opening.type === "window" && (
+                          <label className="full-field">
+                            <span>Sill height</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={selected.opening.sill}
+                              onChange={(event) =>
+                                updateItem(selected.id, {
+                                  opening: {
+                                    ...selected.opening!,
+                                    sill: Number(event.target.value),
+                                  },
+                                })
+                              }
+                            />
+                          </label>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {selected.kind === "camera" && (
+                  <div className="field-section">
+                    <h3>Lens</h3>
+                    <label className="full-field">
+                      <span>Focal length</span>
+                      <div>
+                        <input
+                          type="number"
+                          min="8"
+                          max="400"
+                          value={selected.focalLength ?? 35}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              focalLength: Number(event.target.value),
+                            })
+                          }
+                        />
+                        <em>mm</em>
+                      </div>
+                    </label>
+                    <p className="field-note">Super 35 sensor · 24 mm height</p>
+                  </div>
+                )}
+                {selected.kind === "light" && (
+                  <div className="field-section">
+                    <h3>Light</h3>
+                    <label className="full-field">
+                      <span>Intensity</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="8"
+                        step=".1"
+                        value={selected.intensity ?? 2}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            intensity: Number(event.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <label className="full-field">
+                      <span>Beam spread</span>
+                      <div>
+                        <input
+                          type="number"
+                          min="5"
+                          max="160"
+                          value={selected.spread ?? 45}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              spread: Number(event.target.value),
+                            })
+                          }
+                        />
+                        <em>°</em>
+                      </div>
+                    </label>
+                    <label className="full-field">
+                      <span>Color</span>
+                      <input
+                        type="color"
+                        value={selected.color ?? "#fff4df"}
+                        onChange={(event) =>
+                          updateItem(selected.id, { color: event.target.value })
+                        }
+                      />
+                    </label>
+                    <p className="field-note">
+                      Preview lighting is illustrative, not photometric.
+                    </p>
+                  </div>
+                )}
+              </fieldset>
+              <button className="delete-button" onClick={deleteSelected}>
                 <Trash2 size={15} /> Delete object
               </button>
             </div>
