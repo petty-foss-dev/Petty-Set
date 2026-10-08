@@ -1284,7 +1284,7 @@ function App() {
                     <span>Wood finish</span>
                     <input
                       type="color"
-                      value={selected.color ?? "#c3996a"}
+                      value={selected.color ?? "#d2ab7d"}
                       onChange={(event) =>
                         updateItem(selected.id, { color: event.target.value })
                       }

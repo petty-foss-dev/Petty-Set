@@ -20,7 +20,7 @@ Open the address printed by Vite. The app stores the current project in this bro
 ## Current features
 
 - One film with multiple scenes; each scene has a separate editable 3D set.
-- Draw walls on a quarter-meter grid with endpoint snapping, add framed doorways and windows, and position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden actors, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
+- Draw walls on a quarter-meter grid with endpoint snapping, add framed doorways and windows, and position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden drawing mannequins with visible joints, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
 - Add a furnished sample scene without replacing the current scene. All sample objects remain editable.
 - Extend a selected wall into an adjoining room with a doorway, then furnish that room and route a camera move through it with editable waypoints.
 - Import self-contained glTF 2.0 `.glb` assets up to 1 MB. Models are embedded in local project data and JSON exports; browser storage is capped at roughly 3 MB of project JSON.

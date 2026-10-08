@@ -2,6 +2,7 @@ import { Component, Suspense, lazy } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
 import type { SceneItem } from "./model";
+import Mannequin from "./Mannequin";
 
 const ImportedAsset = lazy(() => import("./ImportedAsset"));
 
@@ -230,84 +231,6 @@ function Wall({ item }: { item: SceneItem }) {
           </mesh>
         </group>
       )}
-    </group>
-  );
-}
-
-function Actor({ item }: { item: SceneItem }) {
-  const tone =
-    item.color ??
-    (item.name.toLowerCase().includes("mara") ? "#a9825c" : "#c3996a");
-  return (
-    <group scale={[item.width / 0.5, item.height / 1.75, item.depth / 0.4]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.018, 0]}>
-        <ringGeometry args={[0.31, 0.37, 32]} />
-        <meshBasicMaterial color="#dc7542" side={THREE.DoubleSide} />
-      </mesh>
-      <Box
-        position={[0, 0.065, 0]}
-        size={[0.38, 0.13, 0.23]}
-        color={darkWood}
-      />
-      <Rod
-        from={[-0.11, 0.09, 0]}
-        to={[-0.12, 0.78, 0]}
-        radius={0.067}
-        color={tone}
-      />
-      <Rod
-        from={[0.11, 0.09, 0]}
-        to={[0.12, 0.78, 0]}
-        radius={0.067}
-        color={tone}
-      />
-      {[
-        [-0.11, 0.74, 0],
-        [0.11, 0.74, 0],
-      ].map((p, i) => (
-        <mesh key={i} position={p as [number, number, number]} castShadow>
-          <sphereGeometry args={[0.085, 12, 8]} />
-          <meshStandardMaterial color={darkWood} />
-        </mesh>
-      ))}
-      <mesh position={[0, 1.12, 0]} castShadow>
-        <cylinderGeometry args={[0.19, 0.25, 0.67, 12]} />
-        <meshStandardMaterial color={tone} roughness={0.95} />
-      </mesh>
-      <mesh position={[0, 1.52, 0]} castShadow>
-        <sphereGeometry args={[0.18, 16, 12]} />
-        <meshStandardMaterial color={tone} roughness={0.9} />
-      </mesh>
-      <Rod
-        from={[0, 1.36, 0]}
-        to={[0, 1.44, 0]}
-        radius={0.08}
-        color={darkWood}
-      />
-      {[-1, 1].map((side) => (
-        <group key={side}>
-          <mesh position={[side * 0.22, 1.39, 0]}>
-            <sphereGeometry args={[0.085, 12, 8]} />
-            <meshStandardMaterial color={darkWood} />
-          </mesh>
-          <Rod
-            from={[side * 0.22, 1.36, 0]}
-            to={[side * 0.31, 1.05, 0.03]}
-            radius={0.055}
-            color={tone}
-          />
-          <mesh position={[side * 0.31, 1.04, 0.03]}>
-            <sphereGeometry args={[0.065, 12, 8]} />
-            <meshStandardMaterial color={darkWood} />
-          </mesh>
-          <Rod
-            from={[side * 0.31, 1.04, 0.03]}
-            to={[side * 0.34, 0.8, -0.03]}
-            radius={0.047}
-            color={tone}
-          />
-        </group>
-      ))}
     </group>
   );
 }
@@ -631,7 +554,7 @@ export default function SetPiece({ item }: { item: SceneItem }) {
     case "wall":
       return <Wall item={item} />;
     case "actor":
-      return <Actor item={item} />;
+      return <Mannequin item={item} />;
     case "table":
       return <Table item={item} />;
     case "chair":
