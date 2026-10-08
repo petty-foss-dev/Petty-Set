@@ -2,7 +2,18 @@ import { aspectRatios, sensors } from "./cinematography.ts";
 import type { AspectRatio, SensorId } from "./cinematography.ts";
 
 export type ItemKind =
-  "wall" | "actor" | "camera" | "light" | "table" | "chair" | "box";
+  | "wall"
+  | "actor"
+  | "camera"
+  | "light"
+  | "table"
+  | "chair"
+  | "box"
+  | "sofa"
+  | "shelf"
+  | "plant"
+  | "rug"
+  | "asset";
 
 export interface SceneItem {
   id: string;
@@ -18,10 +29,14 @@ export interface SceneItem {
   intensity?: number;
   spread?: number;
   focalLength?: number;
+  cameraBody?: "cinema" | "mirrorless" | "broadcast";
   sensor?: SensorId;
   aperture?: number;
   focusDistance?: number;
   color?: string;
+  lightType?: "softbox" | "spot" | "practical";
+  assetData?: string;
+  roomExtended?: boolean;
   hidden?: boolean;
   locked?: boolean;
   opening?: {
@@ -45,6 +60,13 @@ export interface Shot {
     string,
     { x: number; y: number; z: number; rotation: number }
   >;
+  cameraEnd?: { x: number; z: number; height: number; rotation: number };
+  cameraWaypoints?: {
+    x: number;
+    z: number;
+    height: number;
+    rotation: number;
+  }[];
 }
 
 export interface SetScene {
@@ -85,6 +107,11 @@ const itemKinds: ItemKind[] = [
   "table",
   "chair",
   "box",
+  "sofa",
+  "shelf",
+  "plant",
+  "rug",
+  "asset",
 ];
 
 export function isProject(value: unknown): value is Project {
@@ -158,7 +185,25 @@ export function isProject(value: unknown): value is Project {
         ["hidden", "locked"].some(
           (key) => item[key] !== undefined && typeof item[key] !== "boolean",
         ) ||
-        (item.color !== undefined && !isString(item.color))
+        (item.color !== undefined && !isString(item.color)) ||
+        (item.cameraBody !== undefined &&
+          (item.kind !== "camera" ||
+            !["cinema", "mirrorless", "broadcast"].includes(
+              item.cameraBody as string,
+            ))) ||
+        (item.lightType !== undefined &&
+          !["softbox", "spot", "practical"].includes(
+            item.lightType as string,
+          )) ||
+        (item.kind === "asset" &&
+          (!isString(item.assetData) ||
+            !item.assetData.startsWith(
+              "data:model/gltf-binary;base64,Z2xURgI",
+            ) ||
+            item.assetData.length > 1_500_000)) ||
+        (item.kind !== "asset" && item.assetData !== undefined) ||
+        (item.roomExtended !== undefined &&
+          (item.kind !== "wall" || typeof item.roomExtended !== "boolean"))
       )
         return false;
       if (item.opening !== undefined) {
@@ -204,6 +249,28 @@ export function isProject(value: unknown): value is Project {
             return false;
         }
       }
+      if (
+        shot.cameraEnd !== undefined &&
+        (!isRecord(shot.cameraEnd) ||
+          !["x", "z", "height", "rotation"].every((key) =>
+            isFiniteNumber((shot.cameraEnd as Record<string, unknown>)[key]),
+          ) ||
+          (shot.cameraEnd.height as number) <= 0)
+      )
+        return false;
+      if (
+        shot.cameraWaypoints !== undefined &&
+        (!Array.isArray(shot.cameraWaypoints) ||
+          !shot.cameraWaypoints.every(
+            (point) =>
+              isRecord(point) &&
+              ["x", "z", "height", "rotation"].every((key) =>
+                isFiniteNumber(point[key]),
+              ) &&
+              (point.height as number) > 0,
+          ))
+      )
+        return false;
       shotIds.add(shot.id);
     }
     if (
@@ -244,6 +311,7 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
         depth: 0.5,
         z: 3,
         focalLength: 35,
+        cameraBody: "cinema",
         sensor: "super35",
         aperture: 2.8,
         focusDistance: 3,
@@ -264,6 +332,16 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
     case "chair":
       return { ...base, width: 0.55, height: 0.9, depth: 0.55 };
     case "box":
+      return { ...base, width: 1, height: 1, depth: 1 };
+    case "sofa":
+      return { ...base, width: 2, height: 0.85, depth: 0.9 };
+    case "shelf":
+      return { ...base, width: 1.4, height: 2, depth: 0.4 };
+    case "plant":
+      return { ...base, width: 0.7, height: 1.6, depth: 0.7 };
+    case "rug":
+      return { ...base, width: 2.8, height: 0.02, depth: 1.9 };
+    case "asset":
       return { ...base, width: 1, height: 1, depth: 1 };
   }
 }
@@ -294,6 +372,65 @@ export function wallEndpoints(item: SceneItem) {
   ];
 }
 
+export function extendRoom(
+  items: SceneItem[],
+  wallId: string,
+  depth = 4,
+): SceneItem[] {
+  const wall = items.find((item) => item.id === wallId && item.kind === "wall");
+  if (!wall || wall.opening?.type === "window" || wall.roomExtended)
+    return items;
+  const [start, end] = wallEndpoints(wall);
+  const yaw = (wall.rotation * Math.PI) / 180;
+  let nx = Math.sin(yaw),
+    nz = Math.cos(yaw);
+  const others = items.filter(
+    (item) => item.kind === "wall" && item.id !== wallId,
+  );
+  const centerX = others.length
+    ? others.reduce((sum, item) => sum + item.x, 0) / others.length
+    : wall.x - nx;
+  const centerZ = others.length
+    ? others.reduce((sum, item) => sum + item.z, 0) / others.length
+    : wall.z - nz;
+  if ((centerX - wall.x) * nx + (centerZ - wall.z) * nz > 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  const outerStart = { x: start.x + nx * depth, z: start.z + nz * depth };
+  const outerEnd = { x: end.x + nx * depth, z: end.z + nz * depth };
+  const count = items.filter((item) => item.kind === "wall").length;
+  const doorway = wall.opening ?? {
+    type: "door" as const,
+    offset: 0,
+    width: Math.min(1, wall.width - 0.1),
+    height: Math.min(2.1, wall.height - 0.1),
+    sill: 0,
+  };
+  return [
+    ...items.map((item) =>
+      item.id === wall.id
+        ? { ...item, opening: doorway, roomExtended: true }
+        : item,
+    ),
+    {
+      ...wallBetween(start, outerStart, count + 1),
+      height: wall.height,
+      name: "Room side",
+    },
+    {
+      ...wallBetween(outerStart, outerEnd, count + 2),
+      height: wall.height,
+      name: "Room exterior",
+    },
+    {
+      ...wallBetween(outerEnd, end, count + 3),
+      height: wall.height,
+      name: "Room side",
+    },
+  ];
+}
+
 export function snapWallPoint(
   point: { x: number; z: number },
   items: SceneItem[],
@@ -318,18 +455,137 @@ export function snapWallPoint(
 }
 
 export function sampleProject(): Project {
+  const scene = furnishedScene();
+  return { version: 1, name: "The Conversation", scenes: [scene] };
+}
+
+export function furnishedScene(): SetScene {
   const camera = makeItem("camera", 1);
-  const actorA = { ...makeItem("actor", 1), x: -0.8 };
-  const actorB = { ...makeItem("actor", 2), x: 0.8 };
+  const actorA = {
+    ...makeItem("actor", 1),
+    name: "Mara",
+    x: -0.65,
+    z: -0.8,
+    rotation: -25,
+  };
+  const actorB = {
+    ...makeItem("actor", 2),
+    name: "Eli",
+    x: 0.8,
+    z: -0.65,
+    rotation: 25,
+  };
   const items = [
-    { ...makeItem("wall", 1), z: -3, width: 7 },
-    { ...makeItem("wall", 2), x: -3.5, z: 0, width: 6, rotation: 90 },
-    { ...makeItem("wall", 3), x: 3.5, z: 0, width: 6, rotation: 90 },
-    { ...makeItem("table", 1), z: -0.2 },
+    {
+      ...makeItem("wall", 1),
+      name: "Back wall · window",
+      z: -3.4,
+      width: 8,
+      opening: {
+        type: "window" as const,
+        offset: 0.9,
+        width: 2.1,
+        height: 1.3,
+        sill: 0.85,
+      },
+    },
+    {
+      ...makeItem("wall", 2),
+      name: "Left wall · doorway",
+      x: -4,
+      z: -0.4,
+      width: 6,
+      rotation: 90,
+      opening: {
+        type: "door" as const,
+        offset: 1.15,
+        width: 1.05,
+        height: 2.15,
+        sill: 0,
+      },
+    },
+    {
+      ...makeItem("wall", 3),
+      name: "Right wall",
+      x: 4,
+      z: -0.4,
+      width: 6,
+      rotation: 90,
+    },
+    {
+      ...makeItem("wall", 4),
+      name: "Front return",
+      x: -2.65,
+      z: 2.6,
+      width: 2.7,
+    },
+    {
+      ...makeItem("rug", 1),
+      name: "Woven rug",
+      x: 0,
+      z: -0.7,
+      width: 3.8,
+      depth: 2.6,
+    },
+    {
+      ...makeItem("table", 1),
+      name: "Coffee table",
+      x: 0,
+      z: 0.2,
+      width: 1.45,
+      height: 0.48,
+      depth: 0.75,
+    },
+    {
+      ...makeItem("sofa", 1),
+      name: "Linen sofa",
+      x: -1.6,
+      z: -2.65,
+      rotation: 0,
+    },
+    {
+      ...makeItem("chair", 1),
+      name: "Accent chair",
+      x: 2.15,
+      z: -1.6,
+      rotation: -50,
+    },
+    {
+      ...makeItem("shelf", 1),
+      name: "Bookcase",
+      x: -3.4,
+      z: -2.5,
+      rotation: 90,
+    },
+    { ...makeItem("plant", 1), name: "Potted tree", x: 3.05, z: -2.55 },
     actorA,
     actorB,
-    camera,
-    { ...makeItem("light", 1), x: -2, z: 1 },
+    {
+      ...camera,
+      x: 0.1,
+      z: 5.1,
+      height: 1.2,
+      rotation: 0,
+      focalLength: 35,
+      focusDistance: 5.5,
+    },
+    {
+      ...makeItem("light", 1),
+      name: "Key · softbox",
+      x: -2.7,
+      z: 1.1,
+      rotation: -28,
+      height: 2.75,
+    },
+    {
+      ...makeItem("light", 2),
+      name: "Fill · softbox",
+      x: 2.8,
+      z: 1.35,
+      rotation: 30,
+      height: 2.35,
+      intensity: 1.3,
+    },
   ];
   const shot = {
     id: id(),
@@ -340,17 +596,11 @@ export function sampleProject(): Project {
     aspectRatio: "16:9" as AspectRatio,
   };
   return {
-    version: 1,
-    name: "Untitled film",
-    scenes: [
-      {
-        id: id(),
-        name: "Scene 1 · Interior",
-        items,
-        shots: [shot],
-        shootOrder: [shot.id],
-      },
-    ],
+    id: id(),
+    name: "The Conversation · Interior",
+    items,
+    shots: [shot],
+    shootOrder: [shot.id],
   };
 }
 

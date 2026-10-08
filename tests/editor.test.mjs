@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { historyReducer, projectHistory } from "../src/history.ts";
 import {
   isProject,
+  extendRoom,
   sampleProject,
   snapWallPoint,
   wallBetween,
@@ -68,6 +69,56 @@ test("wall drawing snaps to rotated wall endpoints before the grid", () => {
   });
 });
 
+test("extending a wall creates a connected second room and doorway", () => {
+  const scene = sampleProject().scenes[0];
+  const source = scene.items.find((item) => item.name === "Right wall");
+  const extended = extendRoom(scene.items, source.id);
+  assert.equal(extended.length, scene.items.length + 3);
+  assert.equal(
+    extended.find((item) => item.id === source.id).opening.type,
+    "door",
+  );
+  const originalEnds = wallEndpoints(source);
+  const sideEnds = wallEndpoints(extended.at(-3));
+  assert.ok(
+    sideEnds.some((point) =>
+      originalEnds.some(
+        (end) => Math.hypot(point.x - end.x, point.z - end.z) < 1e-8,
+      ),
+    ),
+  );
+  scene.items = extended;
+  assert.equal(isProject({ version: 1, name: "Test", scenes: [scene] }), true);
+});
+
+test("camera paths require finite end coordinates and positive height", () => {
+  const project = sampleProject();
+  project.scenes[0].shots[0].cameraEnd = {
+    x: 4,
+    z: -3,
+    height: 1.4,
+    rotation: 90,
+  };
+  project.scenes[0].shots[0].cameraWaypoints = [
+    { x: 2, z: 0, height: 1.2, rotation: 30 },
+  ];
+  assert.equal(isProject(project), true);
+  project.scenes[0].shots[0].cameraWaypoints[0].height = -1;
+  assert.equal(isProject(project), false);
+});
+
+test("project import rejects asset data without a GLB 2 header", () => {
+  const project = sampleProject();
+  project.scenes[0].items.push({
+    ...project.scenes[0].items[0],
+    id: "asset-1",
+    kind: "asset",
+    opening: undefined,
+    assetData: "data:model/gltf-binary;base64,AAAA",
+  });
+  assert.equal(isProject(project), false);
+});
+
 test("project import validates floor plan placement", () => {
   const project = sampleProject();
   project.scenes[0].floorplan = "data:image/png;base64,AA==";
@@ -112,5 +163,5 @@ test("shot list CSV preserves order and escapes production notes", () => {
   const csv = shotListCSV(scene, scene.shots);
   assert.ok(csv.startsWith("\uFEFF"));
   assert.ok(csv.includes('"Move to ""door"", then hold\nfor cue"'));
-  assert.ok(csv.includes('"Super 35","35","2.8","3","16:9"'));
+  assert.ok(csv.includes('"Super 35","35","2.8","5.5","16:9"'));
 });

@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ChangeEvent, SetStateAction } from "react";
 import {
   Camera,
@@ -21,12 +21,19 @@ import {
   Move3D,
   MousePointer2,
   PenLine,
+  Play,
+  Pause,
   Plus,
   Save,
   Square,
   Trash2,
   Redo2,
   Ruler,
+  Sofa,
+  BookOpen,
+  Flower2,
+  RectangleHorizontal,
+  Box as BoxIcon,
   Undo2,
   Upload,
   UserRound,
@@ -35,12 +42,21 @@ import {
 } from "lucide-react";
 import Stage from "./Stage";
 import type { ViewMode } from "./Stage";
-import { id, isProject, loadProject, makeItem, wallBetween } from "./model";
+import {
+  extendRoom,
+  furnishedScene,
+  id,
+  isProject,
+  loadProject,
+  makeItem,
+  wallBetween,
+} from "./model";
 import type { ItemKind, Project, SceneItem, SetScene, Shot } from "./model";
 import { historyReducer, projectHistory } from "./history";
 import { aspectRatios, cameraOptics, sensors } from "./cinematography";
 import type { AspectRatio, SensorId } from "./cinematography";
 import { shotListCSV } from "./shotList";
+import * as THREE from "three";
 import "./App.css";
 
 const itemIcons: Record<ItemKind, typeof Square> = {
@@ -51,6 +67,11 @@ const itemIcons: Record<ItemKind, typeof Square> = {
   table: LayoutGrid,
   chair: Grip,
   box: Square,
+  sofa: Sofa,
+  shelf: BookOpen,
+  plant: Flower2,
+  rug: RectangleHorizontal,
+  asset: BoxIcon,
 };
 const itemNames: Record<ItemKind, string> = {
   wall: "Wall",
@@ -60,6 +81,11 @@ const itemNames: Record<ItemKind, string> = {
   table: "Table",
   chair: "Chair",
   box: "Block",
+  sofa: "Sofa",
+  shelf: "Bookcase",
+  plant: "Plant",
+  rug: "Rug",
+  asset: "3D asset",
 };
 
 function download(name: string, contents: string, type: string) {
@@ -88,21 +114,28 @@ function App() {
   const [showExport, setShowExport] = useState(false);
   const [showFloorplanControls, setShowFloorplanControls] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
+  const [moveProgress, setMoveProgress] = useState(0);
+  const [playingMove, setPlayingMove] = useState(false);
   const captureRef = useRef<(() => string) | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const floorplanRef = useRef<HTMLInputElement>(null);
+  const assetRef = useRef<HTMLInputElement>(null);
+  const moveStartRef = useRef(0);
   const scene =
     project.scenes.find((value) => value.id === sceneId) ?? project.scenes[0];
   const shot =
     scene.shots.find((value) => value.id === shotId) ?? scene.shots[0];
-  const stageScene = {
-    ...scene,
-    items: scene.items.map((item) =>
-      item.kind === "actor" && shot?.actorMarks?.[item.id]
-        ? { ...item, ...shot.actorMarks[item.id] }
-        : item,
-    ),
-  };
+  const stageScene = useMemo(
+    () => ({
+      ...scene,
+      items: scene.items.map((item) =>
+        item.kind === "actor" && shot?.actorMarks?.[item.id]
+          ? { ...item, ...shot.actorMarks[item.id] }
+          : item,
+      ),
+    }),
+    [scene, shot],
+  );
   const selected = stageScene.items.find((value) => value.id === selectedId);
   const orderedShots =
     order === "story"
@@ -114,6 +147,27 @@ function App() {
   useEffect(() => {
     localStorage.setItem("petty-set-project", JSON.stringify(project));
   }, [project]);
+
+  useEffect(() => {
+    if (!playingMove || !shot?.cameraEnd) return;
+    let handle = 0;
+    const tick = (now: number) => {
+      const progress = Math.min(
+        1,
+        (now - moveStartRef.current) / (shot.duration * 1000),
+      );
+      setMoveProgress(progress);
+      if (progress < 1) handle = requestAnimationFrame(tick);
+      else setPlayingMove(false);
+    };
+    handle = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(handle);
+  }, [playingMove, shot?.cameraEnd, shot?.duration]);
+
+  function resetMove() {
+    setPlayingMove(false);
+    setMoveProgress(0);
+  }
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -202,6 +256,86 @@ function App() {
     setMobilePanel("right");
   }
 
+  async function importAsset(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 1_000_000) {
+      window.alert(
+        "Use a GLB smaller than 1 MB. This local project embeds imported assets in its JSON export.",
+      );
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".glb")) {
+      window.alert("Choose a binary glTF (.glb) model.");
+      return;
+    }
+    try {
+      const bytes = await file.arrayBuffer();
+      const header = new DataView(bytes);
+      if (
+        header.getUint32(0, true) !== 0x46546c67 ||
+        header.getUint32(4, true) !== 2
+      )
+        throw new Error("Invalid GLB");
+      const jsonLength = header.getUint32(12, true);
+      if (
+        header.getUint32(16, true) !== 0x4e4f534a ||
+        20 + jsonLength > bytes.byteLength
+      )
+        throw new Error("Invalid GLB JSON");
+      const manifest = JSON.parse(
+        new TextDecoder().decode(bytes.slice(20, 20 + jsonLength)),
+      ) as { buffers?: { uri?: string }[]; images?: { uri?: string }[] };
+      if (
+        [...(manifest.buffers ?? []), ...(manifest.images ?? [])].some(
+          (entry) => entry.uri && !entry.uri.startsWith("data:"),
+        )
+      )
+        throw new Error("External resource");
+      const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+      const model = await new GLTFLoader().parseAsync(bytes, "");
+      const box = new THREE.Box3().setFromObject(model.scene);
+      if (box.isEmpty()) throw new Error("Empty model");
+      const encoded = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      const assetData = `data:model/gltf-binary;base64,${encoded}`;
+      const currentBytes = JSON.stringify(project).length;
+      if (currentBytes + assetData.length > 3_000_000) {
+        window.alert(
+          "This project is near the browser storage limit. Export a project backup or use a smaller asset.",
+        );
+        return;
+      }
+      const size = box.getSize(new THREE.Vector3());
+      const next = {
+        ...makeItem(
+          "asset",
+          scene.items.filter((item) => item.kind === "asset").length + 1,
+        ),
+        name: file.name.replace(/\.glb$/i, ""),
+        width: Math.max(0.1, size.x),
+        height: Math.max(0.1, size.y),
+        depth: Math.max(0.1, size.z),
+        assetData,
+      };
+      updateScene((current) => ({
+        ...current,
+        items: [...current.items, next],
+      }));
+      setSelectedId(next.id);
+      setMode("stage");
+    } catch {
+      window.alert(
+        "This GLB could not be loaded. Export a self-contained glTF 2.0 binary model and try again.",
+      );
+    }
+  }
+
   function addWall(
     start: { x: number; z: number },
     end: { x: number; z: number },
@@ -262,6 +396,7 @@ function App() {
       setShotId(
         scene.shots.find((value) => value.cameraId !== selected.id)?.id,
       );
+    if (shot?.cameraId === selected.id) resetMove();
   }
 
   function addShot() {
@@ -275,6 +410,7 @@ function App() {
       z: (source?.z ?? 3) + 0.5,
       rotation: source?.rotation ?? 0,
       focalLength: source?.focalLength ?? 35,
+      cameraBody: source?.cameraBody ?? "cinema",
       sensor: source?.sensor ?? "super35",
       aperture: source?.aperture ?? 2.8,
       focusDistance: source?.focusDistance ?? 3,
@@ -305,6 +441,7 @@ function App() {
       shootOrder: [...current.shootOrder, next.id],
     }));
     setShotId(next.id);
+    resetMove();
     setSelectedId(camera.id);
   }
 
@@ -407,6 +544,7 @@ function App() {
       dispatch({ type: "replace", project: value });
       setSceneId(value.scenes[0].id);
       setShotId(value.scenes[0].shots[0]?.id);
+      resetMove();
       setSelectedId(undefined);
     } catch {
       window.alert("This is not a valid Petty: Set project file.");
@@ -604,6 +742,13 @@ function App() {
           accept="image/*"
           onChange={uploadFloorplan}
         />
+        <input
+          ref={assetRef}
+          hidden
+          type="file"
+          accept=".glb,model/gltf-binary"
+          onChange={importAsset}
+        />
       </header>
 
       <div className="workspace">
@@ -629,6 +774,7 @@ function App() {
                   (value) => value.id === event.target.value,
                 );
                 setShotId(next?.shots[0]?.id);
+                resetMove();
                 setSelectedId(undefined);
               }}
             >
@@ -654,10 +800,28 @@ function App() {
                 }));
                 setSceneId(next.id);
                 setShotId(undefined);
+                resetMove();
                 setSelectedId(undefined);
               }}
             >
               <Plus size={15} /> New scene
+            </button>
+            <button
+              className="text-button"
+              onClick={() => {
+                const next = furnishedScene();
+                setProject((current) => ({
+                  ...current,
+                  scenes: [...current.scenes, next],
+                }));
+                setSceneId(next.id);
+                setShotId(next.shots[0].id);
+                resetMove();
+                setSelectedId(undefined);
+                setMode("stage");
+              }}
+            >
+              <Sofa size={15} /> Furnished scene
             </button>
           </div>
           <div className="section-title">
@@ -674,15 +838,17 @@ function App() {
           </div>
           {showAdd && (
             <div className="add-grid">
-              {(Object.keys(itemNames) as ItemKind[]).map((kind) => {
-                const Icon = itemIcons[kind];
-                return (
-                  <button key={kind} onClick={() => addItem(kind)}>
-                    <Icon size={19} />
-                    <span>{itemNames[kind]}</span>
-                  </button>
-                );
-              })}
+              {(Object.keys(itemNames) as ItemKind[])
+                .filter((kind) => kind !== "asset")
+                .map((kind) => {
+                  const Icon = itemIcons[kind];
+                  return (
+                    <button key={kind} onClick={() => addItem(kind)}>
+                      <Icon size={19} />
+                      <span>{itemNames[kind]}</span>
+                    </button>
+                  );
+                })}
             </div>
           )}
           <div className="object-list">
@@ -707,6 +873,9 @@ function App() {
             })}
           </div>
           <div className="left-bottom">
+            <button onClick={() => assetRef.current?.click()}>
+              <Upload size={16} /> Import 3D asset
+            </button>
             <button onClick={() => floorplanRef.current?.click()}>
               <Upload size={16} />{" "}
               {scene.floorplan ? "Replace floor plan" : "Import floor plan"}
@@ -877,6 +1046,7 @@ function App() {
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
               onAddWall={addWall}
               captureRef={captureRef}
+              moveProgress={moveProgress}
             />
             {mode === "camera" && shot && (
               <svg
@@ -937,6 +1107,22 @@ function App() {
             </div>
             {mode === "camera" && (
               <div className="camera-actions">
+                {shot?.cameraEnd && (
+                  <button
+                    onClick={() => {
+                      moveStartRef.current =
+                        performance.now() -
+                        (moveProgress >= 1 ? 0 : moveProgress) *
+                          shot.duration *
+                          1000;
+                      if (moveProgress >= 1) setMoveProgress(0);
+                      setPlayingMove(!playingMove);
+                    }}
+                  >
+                    {playingMove ? <Pause size={16} /> : <Play size={16} />}
+                    {playingMove ? "Pause move" : "Play move"}
+                  </button>
+                )}
                 <button onClick={capture}>
                   <Camera size={16} /> Capture frame
                 </button>
@@ -978,6 +1164,7 @@ function App() {
                   className={`shot-card ${entry.id === shot?.id ? "active" : ""}`}
                   onClick={() => {
                     setShotId(entry.id);
+                    resetMove();
                     setSelectedId(entry.cameraId);
                   }}
                 >
@@ -1092,6 +1279,18 @@ function App() {
                     )}
                   </div>
                 )}
+                {selected.kind === "actor" && (
+                  <label className="full-field">
+                    <span>Wood finish</span>
+                    <input
+                      type="color"
+                      value={selected.color ?? "#c3996a"}
+                      onChange={(event) =>
+                        updateItem(selected.id, { color: event.target.value })
+                      }
+                    />
+                  </label>
+                )}
                 <div className="field-section">
                   <h3>Transform</h3>
                   <div className="field-grid">
@@ -1151,6 +1350,25 @@ function App() {
                 {selected.kind === "wall" && (
                   <div className="field-section">
                     <h3>Opening</h3>
+                    <button
+                      type="button"
+                      disabled={
+                        selected.opening?.type === "window" ||
+                        selected.roomExtended
+                      }
+                      onClick={() =>
+                        updateScene((current) => ({
+                          ...current,
+                          items: extendRoom(current.items, selected.id),
+                        }))
+                      }
+                    >
+                      <Plus size={15} /> Extend room from this wall
+                    </button>
+                    <p className="field-note">
+                      Adds three walls and a doorway; furnish the new room from
+                      the object catalog.
+                    </p>
                     <label className="full-field">
                       <span>Type</span>
                       <select
@@ -1228,6 +1446,22 @@ function App() {
                   <div className="field-section">
                     <h3>Camera and lens</h3>
                     <label className="full-field">
+                      <span>Body</span>
+                      <select
+                        value={selected.cameraBody ?? "cinema"}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            cameraBody: event.target
+                              .value as SceneItem["cameraBody"],
+                          })
+                        }
+                      >
+                        <option value="cinema">Cinema rig</option>
+                        <option value="mirrorless">Mirrorless body</option>
+                        <option value="broadcast">Broadcast camera</option>
+                      </select>
+                    </label>
+                    <label className="full-field">
                       <span>Sensor gate</span>
                       <select
                         value={selected.sensor ?? "super35"}
@@ -1242,6 +1476,32 @@ function App() {
                             {sensor.label} · {sensor.width} × {sensor.height} mm
                           </option>
                         ))}
+                      </select>
+                    </label>
+                    <label className="full-field">
+                      <span>Lens preset</span>
+                      <select
+                        value={
+                          [18, 24, 35, 50, 85].includes(
+                            selected.focalLength ?? 35,
+                          )
+                            ? (selected.focalLength ?? 35)
+                            : "custom"
+                        }
+                        onChange={(event) => {
+                          const focalLength = Number(event.target.value);
+                          if (Number.isFinite(focalLength))
+                            updateItem(selected.id, { focalLength });
+                        }}
+                      >
+                        {[18, 24, 35, 50, 85].map((mm) => (
+                          <option key={mm} value={mm}>
+                            {mm} mm
+                          </option>
+                        ))}
+                        {![18, 24, 35, 50, 85].includes(
+                          selected.focalLength ?? 35,
+                        ) && <option value="custom">Custom</option>}
                       </select>
                     </label>
                     <label className="full-field">
@@ -1330,6 +1590,22 @@ function App() {
                   <div className="field-section">
                     <h3>Light</h3>
                     <label className="full-field">
+                      <span>Source</span>
+                      <select
+                        value={selected.lightType ?? "softbox"}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            lightType: event.target
+                              .value as SceneItem["lightType"],
+                          })
+                        }
+                      >
+                        <option value="softbox">Softbox</option>
+                        <option value="spot">Spotlight</option>
+                        <option value="practical">Practical bulb</option>
+                      </select>
+                    </label>
+                    <label className="full-field">
                       <span>Intensity</span>
                       <input
                         type="range"
@@ -1344,23 +1620,25 @@ function App() {
                         }
                       />
                     </label>
-                    <label className="full-field">
-                      <span>Beam spread</span>
-                      <div>
-                        <input
-                          type="number"
-                          min="5"
-                          max="160"
-                          value={selected.spread ?? 45}
-                          onChange={(event) =>
-                            updateItem(selected.id, {
-                              spread: Number(event.target.value),
-                            })
-                          }
-                        />
-                        <em>°</em>
-                      </div>
-                    </label>
+                    {selected.lightType !== "practical" && (
+                      <label className="full-field">
+                        <span>Beam spread</span>
+                        <div>
+                          <input
+                            type="number"
+                            min="5"
+                            max="160"
+                            value={selected.spread ?? 45}
+                            onChange={(event) =>
+                              updateItem(selected.id, {
+                                spread: Number(event.target.value),
+                              })
+                            }
+                          />
+                          <em>°</em>
+                        </div>
+                      </label>
+                    )}
                     <label className="full-field">
                       <span>Color</span>
                       <input
@@ -1419,6 +1697,153 @@ function App() {
                   ))}
                 </select>
               </label>
+              <div className="camera-move-fields">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={!!shot.cameraEnd}
+                    onChange={(event) => {
+                      setPlayingMove(false);
+                      setMoveProgress(0);
+                      updateShot({
+                        cameraWaypoints: event.target.checked ? [] : undefined,
+                        cameraEnd:
+                          event.target.checked && cameraItem
+                            ? {
+                                x: cameraItem.x,
+                                z: cameraItem.z - 3,
+                                height: cameraItem.height,
+                                rotation: cameraItem.rotation,
+                              }
+                            : undefined,
+                      });
+                    }}
+                  />{" "}
+                  Camera move through set
+                </label>
+                {shot.cameraEnd && (
+                  <>
+                    {(shot.cameraWaypoints ?? []).map((point, index) => (
+                      <div className="waypoint-fields" key={index}>
+                        <div className="waypoint-heading">
+                          Waypoint {index + 1}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateShot({
+                                cameraWaypoints: shot.cameraWaypoints?.filter(
+                                  (_, i) => i !== index,
+                                ),
+                              })
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="field-grid">
+                          {(["x", "z", "height", "rotation"] as const).map(
+                            (key) => (
+                              <label key={key}>
+                                <span>
+                                  {key === "rotation"
+                                    ? "Yaw °"
+                                    : key.toUpperCase()}
+                                </span>
+                                <input
+                                  type="number"
+                                  step={key === "rotation" ? 1 : 0.1}
+                                  value={point[key]}
+                                  onChange={(event) =>
+                                    updateShot({
+                                      cameraWaypoints:
+                                        shot.cameraWaypoints?.map((entry, i) =>
+                                          i === index
+                                            ? {
+                                                ...entry,
+                                                [key]: Number(
+                                                  event.target.value,
+                                                ),
+                                              }
+                                            : entry,
+                                        ),
+                                    })
+                                  }
+                                />
+                              </label>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="waypoint-add"
+                      onClick={() => {
+                        const previous =
+                          shot.cameraWaypoints?.at(-1) ?? cameraItem;
+                        if (!previous || !shot.cameraEnd) return;
+                        updateShot({
+                          cameraWaypoints: [
+                            ...(shot.cameraWaypoints ?? []),
+                            {
+                              x: (previous.x + shot.cameraEnd.x) / 2,
+                              z: (previous.z + shot.cameraEnd.z) / 2,
+                              height:
+                                (previous.height + shot.cameraEnd.height) / 2,
+                              rotation: previous.rotation,
+                            },
+                          ],
+                        });
+                      }}
+                    >
+                      <Plus size={14} /> Add waypoint
+                    </button>
+                    <div className="field-grid">
+                      {(["x", "z", "height", "rotation"] as const).map(
+                        (key) => (
+                          <label key={key}>
+                            <span>
+                              End{" "}
+                              {key === "height"
+                                ? "height"
+                                : key === "rotation"
+                                  ? "yaw °"
+                                  : key.toUpperCase()}
+                            </span>
+                            <input
+                              type="number"
+                              step={key === "rotation" ? 1 : 0.1}
+                              value={shot.cameraEnd![key]}
+                              onChange={(event) =>
+                                updateShot({
+                                  cameraEnd: {
+                                    ...shot.cameraEnd!,
+                                    [key]: Number(event.target.value),
+                                  },
+                                })
+                              }
+                            />
+                          </label>
+                        ),
+                      )}
+                    </div>
+                    <label>
+                      Preview position
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={Math.round(moveProgress * 100)}
+                        onChange={(event) => {
+                          setPlayingMove(false);
+                          setMoveProgress(Number(event.target.value) / 100);
+                          setMode("camera");
+                        }}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
               <label>
                 Notes
                 <textarea
@@ -1470,6 +1895,7 @@ function App() {
                     setShotId(
                       scene.shots.find((value) => value.id !== shot.id)?.id,
                     );
+                    resetMove();
                   }}
                   aria-label="Delete shot"
                 >

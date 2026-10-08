@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import {
   Grid,
+  Line,
   OrbitControls,
   PerspectiveCamera,
   TransformControls,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { snapWallPoint } from "./model";
+import { snapWallPoint, wallEndpoints } from "./model";
+import SetPiece from "./SetPieces";
 import type { SceneItem, SetScene, Shot } from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
@@ -28,16 +30,23 @@ interface Props {
     end: { x: number; z: number },
   ) => void;
   captureRef: React.MutableRefObject<(() => string) | null>;
+  moveProgress: number;
 }
 
 function CameraRig({
   mode,
   cameraItem,
   aspectRatio,
+  cameraEnd,
+  cameraWaypoints,
+  moveProgress,
 }: {
   mode: ViewMode;
   cameraItem?: SceneItem;
   aspectRatio: AspectRatio;
+  cameraEnd?: Shot["cameraEnd"];
+  cameraWaypoints?: Shot["cameraWaypoints"];
+  moveProgress: number;
 }) {
   const { camera, size } = useThree();
   useEffect(() => {
@@ -45,7 +54,7 @@ function CameraRig({
       camera.position.set(0, 20, 0.01);
       camera.lookAt(0, 0, 0);
     } else if (mode === "stage") {
-      camera.position.set(8, 7, 9);
+      camera.position.set(7.5, 6.6, 8.2);
       camera.lookAt(0, 0, 0);
     }
     camera.updateProjectionMatrix();
@@ -69,229 +78,33 @@ function CameraRig({
       ) *
       180) /
     Math.PI;
-  const yaw = (cameraItem.rotation * Math.PI) / 180;
+  const poses = [
+    cameraItem,
+    ...(cameraWaypoints ?? []),
+    cameraEnd ?? cameraItem,
+  ];
+  const travel = Math.min(poses.length - 1, moveProgress * (poses.length - 1));
+  const segment = Math.min(poses.length - 2, Math.floor(travel));
+  const fraction = travel - segment;
+  const from = poses[segment],
+    to = poses[segment + 1];
+  const x = THREE.MathUtils.lerp(from.x, to.x, fraction);
+  const z = THREE.MathUtils.lerp(from.z, to.z, fraction);
+  const height = THREE.MathUtils.lerp(from.height, to.height, fraction);
+  const delta =
+    THREE.MathUtils.euclideanModulo(to.rotation - from.rotation + 180, 360) -
+    180;
+  const yaw = ((from.rotation + delta * fraction) * Math.PI) / 180;
   return (
     <PerspectiveCamera
       makeDefault
-      position={[cameraItem.x, cameraItem.height, cameraItem.z]}
+      position={[x, height, z]}
       rotation={[0, yaw, 0]}
       fov={fov}
       near={0.05}
       far={500}
     />
   );
-}
-
-function Actor({ item }: { item: SceneItem }) {
-  const group = useRef<THREE.Group>(null);
-  const time = useRef(0);
-  useFrame((_, delta) => {
-    time.current += delta;
-    if (group.current)
-      group.current.rotation.z = Math.sin(time.current * 1.8 + item.x) * 0.012;
-  });
-  return (
-    <group ref={group}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
-        <ringGeometry args={[0.34, 0.39, 32]} />
-        <meshBasicMaterial color="#de8248" side={THREE.DoubleSide} />
-      </mesh>
-      <mesh position={[0, 0.03, -0.48]} rotation={[-Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.12, 0.24, 3]} />
-        <meshBasicMaterial color="#de8248" />
-      </mesh>
-      <mesh position={[0, 1.37, 0]} castShadow>
-        <sphereGeometry args={[0.22, 20, 16]} />
-        <meshStandardMaterial color="#c99872" roughness={0.9} />
-      </mesh>
-      <mesh position={[0, 0.83, 0]} castShadow>
-        <capsuleGeometry args={[0.27, 0.55, 6, 12]} />
-        <meshStandardMaterial color="#cc8451" roughness={0.85} />
-      </mesh>
-      <mesh position={[-0.14, 0.29, 0]} castShadow>
-        <capsuleGeometry args={[0.1, 0.4, 4, 8]} />
-        <meshStandardMaterial color="#28313b" />
-      </mesh>
-      <mesh position={[0.14, 0.29, 0]} castShadow>
-        <capsuleGeometry args={[0.1, 0.4, 4, 8]} />
-        <meshStandardMaterial color="#28313b" />
-      </mesh>
-    </group>
-  );
-}
-
-function ItemMesh({ item }: { item: SceneItem }) {
-  const material = (color: string) => (
-    <meshStandardMaterial color={color} roughness={0.72} />
-  );
-  switch (item.kind) {
-    case "wall": {
-      const opening = item.opening;
-      if (!opening)
-        return (
-          <mesh position={[0, item.height / 2, 0]} castShadow receiveShadow>
-            <boxGeometry args={[item.width, item.height, item.depth]} />
-            {material("#aeb4b5")}
-          </mesh>
-        );
-      const apertureWidth = Math.max(
-        0.1,
-        Math.min(opening.width, item.width - 0.1),
-      );
-      const apertureCenter = Math.max(
-        -item.width / 2 + apertureWidth / 2,
-        Math.min(item.width / 2 - apertureWidth / 2, opening.offset),
-      );
-      const left = apertureCenter - apertureWidth / 2;
-      const right = apertureCenter + apertureWidth / 2;
-      const sill =
-        opening.type === "door"
-          ? 0
-          : Math.max(0, Math.min(opening.sill, item.height - 0.1));
-      const apertureHeight = Math.max(
-        0.1,
-        Math.min(opening.height, item.height - sill),
-      );
-      const headerHeight = item.height - sill - apertureHeight;
-      const segments = [
-        {
-          width: left + item.width / 2,
-          height: item.height,
-          x: (left - item.width / 2) / 2,
-          y: item.height / 2,
-        },
-        {
-          width: item.width / 2 - right,
-          height: item.height,
-          x: (right + item.width / 2) / 2,
-          y: item.height / 2,
-        },
-        { width: apertureWidth, height: sill, x: apertureCenter, y: sill / 2 },
-        {
-          width: apertureWidth,
-          height: headerHeight,
-          x: apertureCenter,
-          y: sill + apertureHeight + headerHeight / 2,
-        },
-      ];
-      return (
-        <group>
-          {segments
-            .filter((segment) => segment.width > 0.01 && segment.height > 0.01)
-            .map((segment, index) => (
-              <mesh
-                key={index}
-                position={[segment.x, segment.y, 0]}
-                castShadow
-                receiveShadow
-              >
-                <boxGeometry
-                  args={[segment.width, segment.height, item.depth]}
-                />
-                {material("#aeb4b5")}
-              </mesh>
-            ))}
-        </group>
-      );
-    }
-    case "box":
-      return (
-        <mesh position={[0, item.height / 2, 0]} castShadow receiveShadow>
-          <boxGeometry args={[item.width, item.height, item.depth]} />
-          {material("#b3a38c")}
-        </mesh>
-      );
-    case "actor":
-      return <Actor item={item} />;
-    case "table":
-      return (
-        <group>
-          <mesh position={[0, item.height - 0.08, 0]} castShadow>
-            <boxGeometry args={[item.width, 0.16, item.depth]} />
-            {material("#8d6246")}
-          </mesh>
-          {[-1, 1].flatMap((x) =>
-            [-1, 1].map((z) => (
-              <mesh
-                key={`${x}-${z}`}
-                position={[
-                  x * (item.width / 2 - 0.12),
-                  item.height / 2 - 0.08,
-                  z * (item.depth / 2 - 0.12),
-                ]}
-                castShadow
-              >
-                <boxGeometry args={[0.12, item.height - 0.16, 0.12]} />
-                {material("#76523d")}
-              </mesh>
-            )),
-          )}
-        </group>
-      );
-    case "chair":
-      return (
-        <group>
-          <mesh position={[0, 0.46, 0]} castShadow>
-            <boxGeometry args={[item.width, 0.1, item.depth]} />
-            {material("#7a6555")}
-          </mesh>
-          <mesh position={[0, 0.67, -item.depth / 2 + 0.05]} castShadow>
-            <boxGeometry args={[item.width, 0.5, 0.1]} />
-            {material("#7a6555")}
-          </mesh>
-          {[-1, 1].flatMap((x) =>
-            [-1, 1].map((z) => (
-              <mesh
-                key={`${x}-${z}`}
-                position={[x * 0.21, 0.22, z * 0.2]}
-                castShadow
-              >
-                <boxGeometry args={[0.07, 0.44, 0.07]} />
-                {material("#584a40")}
-              </mesh>
-            )),
-          )}
-        </group>
-      );
-    case "camera":
-      return (
-        <group>
-          <mesh position={[0, item.height, 0]} castShadow>
-            <boxGeometry args={[0.42, 0.28, 0.36]} />
-            {material("#292e32")}
-          </mesh>
-          <mesh
-            position={[0, item.height, -0.31]}
-            rotation={[Math.PI / 2, 0, 0]}
-            castShadow
-          >
-            <cylinderGeometry args={[0.11, 0.15, 0.32, 20]} />
-            {material("#202529")}
-          </mesh>
-          <mesh position={[0, item.height / 2, 0]}>
-            <cylinderGeometry args={[0.025, 0.04, item.height - 0.25, 8]} />
-            {material("#343b41")}
-          </mesh>
-        </group>
-      );
-    case "light":
-      return (
-        <group>
-          <mesh position={[0, item.height / 2, 0]}>
-            <cylinderGeometry args={[0.025, 0.04, item.height, 8]} />
-            {material("#444b52")}
-          </mesh>
-          <mesh position={[0, item.height, 0]} castShadow>
-            <boxGeometry args={[0.42, 0.3, 0.18]} />
-            {material("#32373b")}
-          </mesh>
-          <mesh position={[0, item.height, -0.11]}>
-            <planeGeometry args={[0.32, 0.2]} />
-            <meshBasicMaterial color={item.color ?? "#fff2d7"} />
-          </mesh>
-        </group>
-      );
-  }
 }
 
 function SelectedObject({
@@ -324,7 +137,7 @@ function SelectedObject({
           onSelect(item.id);
         }}
       >
-        <ItemMesh item={item} />
+        <SetPiece item={item} />
         <mesh position={[0, Math.max(0.3, item.height / 2), 0]}>
           <boxGeometry
             args={[
@@ -355,6 +168,7 @@ function StageContent({
   onSelect,
   onMove,
   onAddWall,
+  moveProgress,
 }: Omit<Props, "captureRef">) {
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
   const floorTexture = useMemo(() => {
@@ -376,6 +190,24 @@ function StageContent({
     rotation: 0,
     opacity: 0.65,
   };
+  const roomFloor = useMemo(() => {
+    const points = scene.items
+      .filter((item) => item.kind === "wall")
+      .flatMap(wallEndpoints);
+    if (points.length < 4) return null;
+    const xs = points.map((point) => point.x);
+    const zs = points.map((point) => point.z);
+    const minX = Math.min(...xs),
+      maxX = Math.max(...xs);
+    const minZ = Math.min(...zs),
+      maxZ = Math.max(...zs);
+    return {
+      x: (minX + maxX) / 2,
+      z: (minZ + maxZ) / 2,
+      width: maxX - minX,
+      depth: maxZ - minZ,
+    };
+  }, [scene.items]);
 
   const select = (event: ThreeEvent<PointerEvent>, id: string) => {
     event.stopPropagation();
@@ -387,6 +219,9 @@ function StageContent({
         mode={mode}
         cameraItem={cameraItem}
         aspectRatio={shot?.aspectRatio ?? "16:9"}
+        cameraEnd={shot?.cameraEnd}
+        cameraWaypoints={shot?.cameraWaypoints}
+        moveProgress={moveProgress}
       />
       <ambientLight intensity={0.95} />
       <hemisphereLight args={["#f6f3e9", "#8d9290", 1.3]} />
@@ -398,17 +233,36 @@ function StageContent({
       />
       {scene.items
         .filter((item) => item.kind === "light" && !item.hidden)
-        .map((item) => (
-          <spotLight
-            key={`light-${item.id}`}
-            position={[item.x, item.height, item.z]}
-            target-position={[item.x, 0, item.z - 1]}
-            color={item.color ?? "#fff4df"}
-            intensity={item.intensity ?? 2}
-            angle={((item.spread ?? 45) * Math.PI) / 360}
-            distance={8}
-          />
-        ))}
+        .map((item) =>
+          item.lightType === "practical" ? (
+            <pointLight
+              key={`light-${item.id}`}
+              position={[item.x, item.height, item.z]}
+              color={item.color ?? "#fff4df"}
+              intensity={item.intensity ?? 2}
+              distance={6}
+              decay={2}
+            />
+          ) : (
+            <spotLight
+              key={`light-${item.id}`}
+              position={[item.x, item.height, item.z]}
+              target-position={[
+                item.x - Math.sin((item.rotation * Math.PI) / 180) * 2,
+                1,
+                item.z - Math.cos((item.rotation * Math.PI) / 180) * 2,
+              ]}
+              color={item.color ?? "#fff4df"}
+              intensity={item.intensity ?? 2}
+              angle={
+                ((item.spread ?? (item.lightType === "spot" ? 30 : 75)) *
+                  Math.PI) /
+                360
+              }
+              distance={8}
+            />
+          ),
+        )}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
@@ -439,6 +293,31 @@ function StageContent({
         <planeGeometry args={[100, 100]} />
         <meshStandardMaterial color="#d7d7d0" roughness={1} />
       </mesh>
+      {roomFloor && (
+        <group position={[roomFloor.x, 0.006, roomFloor.z]}>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            receiveShadow
+            raycast={() => null}
+          >
+            <planeGeometry args={[roomFloor.width, roomFloor.depth]} />
+            <meshStandardMaterial color="#b6aa92" roughness={0.96} />
+          </mesh>
+          {Array.from(
+            { length: Math.floor(roomFloor.depth / 0.38) },
+            (_, index) => (
+              <mesh
+                key={index}
+                position={[0, 0.001, -roomFloor.depth / 2 + (index + 1) * 0.38]}
+                raycast={() => null}
+              >
+                <boxGeometry args={[roomFloor.width, 0.002, 0.006]} />
+                <meshBasicMaterial color="#968b76" transparent opacity={0.4} />
+              </mesh>
+            ),
+          )}
+        </group>
+      )}
       {wallDraft && (
         <mesh
           position={[
@@ -528,10 +407,44 @@ function StageContent({
                 if (tool !== "wall") select(event, item.id);
               }}
             >
-              <ItemMesh item={item} />
+              <SetPiece item={item} />
             </group>
           ),
         )}
+      {mode !== "camera" && cameraItem && shot?.cameraEnd && (
+        <group>
+          <Line
+            points={[
+              cameraItem,
+              ...(shot.cameraWaypoints ?? []),
+              shot.cameraEnd,
+            ].map(
+              (point) => [point.x, 0.055, point.z] as [number, number, number],
+            )}
+            color="#df7540"
+            lineWidth={2}
+            raycast={() => null}
+          />
+          {[...(shot.cameraWaypoints ?? []), shot.cameraEnd].map(
+            (point, index) => (
+              <mesh
+                key={index}
+                position={[point.x, 0.065, point.z]}
+                raycast={() => null}
+              >
+                <sphereGeometry args={[0.09, 12, 8]} />
+                <meshBasicMaterial
+                  color={
+                    index === (shot.cameraWaypoints?.length ?? 0)
+                      ? "#faad6a"
+                      : "#df7540"
+                  }
+                />
+              </mesh>
+            ),
+          )}
+        </group>
+      )}
       {mode !== "camera" && (
         <OrbitControls
           enabled={tool !== "wall"}
@@ -551,7 +464,7 @@ export default function Stage(props: Props) {
   return (
     <Canvas
       shadows={{ type: THREE.PCFShadowMap }}
-      camera={{ position: [8, 7, 9], fov: 50 }}
+      camera={{ position: [7.5, 6.6, 8.2], fov: 50 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       onCreated={({ gl }) => {
         captureRef.current = () => gl.domElement.toDataURL("image/png");

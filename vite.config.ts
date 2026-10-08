@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: { dedupe: ["three"] },
   build: {
     chunkSizeWarningLimit: 1000,
     rolldownOptions: {

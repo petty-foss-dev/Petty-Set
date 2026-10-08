@@ -11,10 +11,20 @@ npm run dev
 
 Open the address printed by Vite. The app stores the current project in this browser's local storage. Export a project file regularly if you need a durable backup.
 
+## Preview
+
+![Furnished rooms with an editable camera route](docs/screenshots/multi-room.jpg)
+
+![Camera view inside the furnished scene](docs/screenshots/furnished-camera.jpg)
+
 ## Current features
 
 - One film with multiple scenes; each scene has a separate editable 3D set.
-- Draw walls on a quarter-meter grid with endpoint snapping, add doorways and windows, and position blocks, tables, chairs, actors, cameras, and lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
+- Draw walls on a quarter-meter grid with endpoint snapping, add framed doorways and windows, and position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden actors, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
+- Add a furnished sample scene without replacing the current scene. All sample objects remain editable.
+- Extend a selected wall into an adjoining room with a doorway, then furnish that room and route a camera move through it with editable waypoints.
+- Import self-contained glTF 2.0 `.glb` assets up to 1 MB. Models are embedded in local project data and JSON exports; browser storage is capped at roughly 3 MB of project JSON.
+- Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Undo and redo project edits; duplicate, hide, and lock set objects.
 - Set actor positions and facing per shot, with marks visible on the plan.
 - Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity.
@@ -26,13 +36,13 @@ Open the address printed by Vite. The app stores the current project in this bro
 
 ## Parity roadmap
 
-This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
-
 See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and build order.
 
+This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
+
 1. Modeling tools: connected wall corners, room scale controls, broader snapping, grouping, and a larger original asset catalog.
-2. Cinematography: named camera bodies and lenses, visual depth of field, camera paths, and take variants.
-3. Performance planning: actor poses and animation library, blocking paths, lighting modifiers, power routing, and alternate plans.
+2. Cinematography: named camera bodies and lenses, visual depth of field, curved camera paths, collision-aware movement, and take variants.
+3. Performance planning: actor poses and animation library, blocking paths, more lighting modifiers, power routing, and alternate plans.
 4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.
 5. Collaboration: project accounts, shareable review links, comments, crew roles, editing, and branding. This requires an optional server; local projects should continue to work without one.
 
