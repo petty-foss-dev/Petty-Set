@@ -532,14 +532,16 @@ function StageContent({
             </group>
           ),
         )}
-      <OrbitControls
-        enabled={mode !== "camera" && tool !== "wall"}
-        enableRotate={mode !== "plan"}
-        maxPolarAngle={Math.PI / 2.02}
-        minDistance={2}
-        maxDistance={60}
-        makeDefault
-      />
+      {mode !== "camera" && (
+        <OrbitControls
+          enabled={tool !== "wall"}
+          enableRotate={mode !== "plan"}
+          maxPolarAngle={Math.PI / 2.02}
+          minDistance={2}
+          maxDistance={60}
+          makeDefault
+        />
+      )}
     </>
   );
 }
