@@ -8,6 +8,8 @@ import {
   snapWallPoint,
   wallBetween,
   wallEndpoints,
+  actorPoseAt,
+  outdoorScene,
 } from "../src/model.ts";
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
@@ -105,6 +107,46 @@ test("camera paths require finite end coordinates and positive height", () => {
   assert.equal(isProject(project), true);
   project.scenes[0].shots[0].cameraWaypoints[0].height = -1;
   assert.equal(isProject(project), false);
+});
+
+test("actor movement follows waypoints and turns by the short arc", () => {
+  const start = { x: 0, y: 0, z: 0, rotation: 350 };
+  const path = {
+    waypoints: [{ x: 2, y: 0, z: -1, rotation: 10 }],
+    end: { x: 4, y: 0, z: -3, rotation: 90 },
+  };
+  assert.deepEqual(actorPoseAt(start, path, 0), start);
+  assert.deepEqual(actorPoseAt(start, path, 0.25), {
+    x: 1,
+    y: 0,
+    z: -0.5,
+    rotation: 360,
+  });
+  assert.deepEqual(actorPoseAt(start, path, 0.5), {
+    x: 2,
+    y: 0,
+    z: -1,
+    rotation: 10,
+  });
+  assert.deepEqual(actorPoseAt(start, path, 1), {
+    x: 4,
+    y: 0,
+    z: -3,
+    rotation: 90,
+  });
+});
+
+test("outdoor scene and actor routes survive project validation", () => {
+  const scene = outdoorScene();
+  const project = { version: 1, name: "Exterior", scenes: [scene] };
+  assert.equal(isProject(project), true);
+  const invalid = structuredClone(project);
+  const actorId = Object.keys(invalid.scenes[0].shots[0].actorPaths)[0];
+  invalid.scenes[0].shots[0].actorPaths[actorId].end.x = Infinity;
+  assert.equal(isProject(invalid), false);
+  const badSky = structuredClone(project);
+  badSky.scenes[0].environment.skyColor = "blue";
+  assert.equal(isProject(badSky), false);
 });
 
 test("project import rejects asset data without a GLB 2 header", () => {

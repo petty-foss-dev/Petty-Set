@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import type { SceneItem } from "./model";
 
@@ -131,10 +131,18 @@ function Piece({
   );
 }
 
-export default function Mannequin({ item }: { item: SceneItem }) {
+export default function Mannequin({
+  item,
+  walkPhase = 0,
+}: {
+  item: SceneItem;
+  walkPhase?: number;
+}) {
   const map = useMemo(() => grainTexture(), []);
+  useEffect(() => () => map.dispose(), [map]);
   const color = item.color ?? "#d2ab7d";
   const connector = "#745235";
+  const swing = Math.sin(walkPhase);
   return (
     <group scale={[item.width / 0.5, item.height / 1.75, item.depth / 0.4]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}>
@@ -167,84 +175,98 @@ export default function Mannequin({ item }: { item: SceneItem }) {
       <Piece geometry={head} position={[0, 1.55, 0]} color={color} map={map} />
       {[-1, 1].map((side) => (
         <group key={side}>
-          <Piece
-            geometry={joint}
+          <group
             position={[side * 0.255, 1.36, 0]}
-            scale={[0.085, 0.08, 0.085]}
-            color={color}
-            map={map}
-          />
-          <Piece
-            geometry={upperArm}
-            position={[side * 0.28, 1.18, 0]}
-            rotation={[0, 0, side * 0.09]}
-            color={color}
-            map={map}
-          />
-          <Piece
-            geometry={joint}
-            position={[side * 0.3, 1.01, 0]}
-            scale={[0.055, 0.055, 0.055]}
-            color={connector}
-          />
-          <Piece
-            geometry={forearm}
-            position={[side * 0.31, 0.84, 0]}
-            rotation={[0, 0, side * 0.03]}
-            color={color}
-            map={map}
-          />
-          <Piece
-            geometry={joint}
-            position={[side * 0.315, 0.67, 0]}
-            scale={[0.04, 0.045, 0.04]}
-            color={connector}
-          />
-          <Piece
-            geometry={hand}
-            position={[side * 0.32, 0.55, -0.015]}
-            rotation={[0, 0, side * 0.15]}
-            scale={[0.045, 0.105, 0.027]}
-            color={color}
-            map={map}
-          />
-          <Piece
-            geometry={joint}
+            rotation={[side * swing * 0.22, 0, 0]}
+          >
+            <group position={[-side * 0.255, -1.36, 0]}>
+              <Piece
+                geometry={joint}
+                position={[side * 0.255, 1.36, 0]}
+                scale={[0.085, 0.08, 0.085]}
+                color={color}
+                map={map}
+              />
+              <Piece
+                geometry={upperArm}
+                position={[side * 0.28, 1.18, 0]}
+                rotation={[0, 0, side * 0.09]}
+                color={color}
+                map={map}
+              />
+              <Piece
+                geometry={joint}
+                position={[side * 0.3, 1.01, 0]}
+                scale={[0.055, 0.055, 0.055]}
+                color={connector}
+              />
+              <Piece
+                geometry={forearm}
+                position={[side * 0.31, 0.84, 0]}
+                rotation={[0, 0, side * 0.03]}
+                color={color}
+                map={map}
+              />
+              <Piece
+                geometry={joint}
+                position={[side * 0.315, 0.67, 0]}
+                scale={[0.04, 0.045, 0.04]}
+                color={connector}
+              />
+              <Piece
+                geometry={hand}
+                position={[side * 0.32, 0.55, -0.015]}
+                rotation={[0, 0, side * 0.15]}
+                scale={[0.045, 0.105, 0.027]}
+                color={color}
+                map={map}
+              />
+            </group>
+          </group>
+          <group
             position={[side * 0.105, 0.63, 0]}
-            scale={[0.072, 0.07, 0.072]}
-            color={connector}
-          />
-          <Piece
-            geometry={thigh}
-            position={[side * 0.11, 0.48, 0]}
-            color={color}
-            map={map}
-          />
-          <Piece
-            geometry={joint}
-            position={[side * 0.11, 0.29, 0]}
-            scale={[0.062, 0.06, 0.062]}
-            color={connector}
-          />
-          <Piece
-            geometry={shin}
-            position={[side * 0.11, 0.2, 0]}
-            color={color}
-            map={map}
-          />
-          <Piece
-            geometry={joint}
-            position={[side * 0.11, 0.065, 0]}
-            scale={[0.043, 0.04, 0.043]}
-            color={connector}
-          />
-          <Piece
-            geometry={foot}
-            position={[side * 0.11, 0.09, -0.075]}
-            scale={[0.105, 0.047, 0.17]}
-            color={color}
-            map={map}
-          />
+            rotation={[-side * swing * 0.28, 0, 0]}
+          >
+            <group position={[-side * 0.105, -0.63, 0]}>
+              <Piece
+                geometry={joint}
+                position={[side * 0.105, 0.63, 0]}
+                scale={[0.072, 0.07, 0.072]}
+                color={connector}
+              />
+              <Piece
+                geometry={thigh}
+                position={[side * 0.11, 0.48, 0]}
+                color={color}
+                map={map}
+              />
+              <Piece
+                geometry={joint}
+                position={[side * 0.11, 0.29, 0]}
+                scale={[0.062, 0.06, 0.062]}
+                color={connector}
+              />
+              <Piece
+                geometry={shin}
+                position={[side * 0.11, 0.2, 0]}
+                color={color}
+                map={map}
+              />
+              <Piece
+                geometry={joint}
+                position={[side * 0.11, 0.065, 0]}
+                scale={[0.043, 0.04, 0.043]}
+                color={connector}
+              />
+              <Piece
+                geometry={foot}
+                position={[side * 0.11, 0.09, -0.075]}
+                scale={[0.105, 0.047, 0.17]}
+                color={color}
+                map={map}
+              />
+            </group>
+          </group>
         </group>
       ))}
     </group>

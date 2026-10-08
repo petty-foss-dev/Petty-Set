@@ -13,7 +13,30 @@ export type ItemKind =
   | "shelf"
   | "plant"
   | "rug"
+  | "tree"
+  | "bench"
+  | "vehicle"
+  | "ground"
   | "asset";
+
+export interface ActorMark {
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+}
+
+export interface ActorPath {
+  waypoints: ActorMark[];
+  end: ActorMark;
+}
+
+export interface SceneEnvironment {
+  ground: "studio" | "grass" | "asphalt" | "sand";
+  skyColor: string;
+  sunAzimuth: number;
+  sunElevation: number;
+}
 
 export interface SceneItem {
   id: string;
@@ -56,10 +79,8 @@ export interface Shot {
   frame?: string;
   duration: number;
   aspectRatio?: AspectRatio;
-  actorMarks?: Record<
-    string,
-    { x: number; y: number; z: number; rotation: number }
-  >;
+  actorMarks?: Record<string, ActorMark>;
+  actorPaths?: Record<string, ActorPath>;
   cameraEnd?: { x: number; z: number; height: number; rotation: number };
   cameraWaypoints?: {
     x: number;
@@ -76,6 +97,7 @@ export interface SetScene {
   shots: Shot[];
   shootOrder: string[];
   floorplan?: string;
+  environment?: SceneEnvironment;
   floorplanPlacement?: {
     x: number;
     z: number;
@@ -111,8 +133,16 @@ const itemKinds: ItemKind[] = [
   "shelf",
   "plant",
   "rug",
+  "tree",
+  "bench",
+  "vehicle",
+  "ground",
   "asset",
 ];
+
+const isActorMark = (value: unknown): value is ActorMark =>
+  isRecord(value) &&
+  ["x", "y", "z", "rotation"].every((key) => isFiniteNumber(value[key]));
 
 export function isProject(value: unknown): value is Project {
   if (
@@ -147,6 +177,22 @@ export function isProject(value: unknown): value is Project {
         (placement.height as number) <= 0 ||
         (placement.opacity as number) < 0 ||
         (placement.opacity as number) > 1
+      )
+        return false;
+    }
+    if (scene.environment !== undefined) {
+      const environment = scene.environment;
+      if (
+        !isRecord(environment) ||
+        !["studio", "grass", "asphalt", "sand"].includes(
+          environment.ground as string,
+        ) ||
+        !isString(environment.skyColor) ||
+        !/^#[0-9a-fA-F]{6}$/.test(environment.skyColor) ||
+        !isFiniteNumber(environment.sunAzimuth) ||
+        !isFiniteNumber(environment.sunElevation) ||
+        environment.sunElevation < 0 ||
+        environment.sunElevation > 90
       )
         return false;
     }
@@ -239,12 +285,19 @@ export function isProject(value: unknown): value is Project {
       if (shot.actorMarks !== undefined) {
         if (!isRecord(shot.actorMarks)) return false;
         for (const [actorId, mark] of Object.entries(shot.actorMarks)) {
+          if (items.get(actorId) !== "actor" || !isActorMark(mark))
+            return false;
+        }
+      }
+      if (shot.actorPaths !== undefined) {
+        if (!isRecord(shot.actorPaths)) return false;
+        for (const [actorId, path] of Object.entries(shot.actorPaths)) {
           if (
             items.get(actorId) !== "actor" ||
-            !isRecord(mark) ||
-            !["x", "y", "z", "rotation"].every((key) =>
-              isFiniteNumber(mark[key]),
-            )
+            !isRecord(path) ||
+            !isActorMark(path.end) ||
+            !Array.isArray(path.waypoints) ||
+            !path.waypoints.every(isActorMark)
           )
             return false;
         }
@@ -341,9 +394,37 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
       return { ...base, width: 0.7, height: 1.6, depth: 0.7 };
     case "rug":
       return { ...base, width: 2.8, height: 0.02, depth: 1.9 };
+    case "tree":
+      return { ...base, width: 2.6, height: 4.8, depth: 2.6 };
+    case "bench":
+      return { ...base, width: 1.8, height: 0.95, depth: 0.7 };
+    case "vehicle":
+      return { ...base, width: 4.2, height: 1.6, depth: 1.8 };
+    case "ground":
+      return { ...base, width: 2, height: 0.03, depth: 5, color: "#c3bca9" };
     case "asset":
       return { ...base, width: 1, height: 1, depth: 1 };
   }
+}
+
+export function actorPoseAt(
+  start: ActorMark,
+  path: ActorPath,
+  progress: number,
+) {
+  const points = [start, ...path.waypoints, path.end];
+  const travel = Math.min(1, Math.max(0, progress)) * (points.length - 1);
+  const segment = Math.min(points.length - 2, Math.floor(travel));
+  const fraction = travel - segment;
+  const from = points[segment];
+  const to = points[segment + 1];
+  const turn = ((((to.rotation - from.rotation) % 360) + 540) % 360) - 180;
+  return {
+    x: from.x + (to.x - from.x) * fraction,
+    y: from.y + (to.y - from.y) * fraction,
+    z: from.z + (to.z - from.z) * fraction,
+    rotation: from.rotation + turn * fraction,
+  };
 }
 
 export function wallBetween(
@@ -598,6 +679,102 @@ export function furnishedScene(): SetScene {
   return {
     id: id(),
     name: "The Conversation · Interior",
+    items,
+    shots: [shot],
+    shootOrder: [shot.id],
+  };
+}
+
+export function outdoorScene(): SetScene {
+  const camera = {
+    ...makeItem("camera", 1),
+    x: 0,
+    z: 9.5,
+    height: 1.45,
+    focalLength: 24,
+    focusDistance: 9,
+  };
+  const actor = { ...makeItem("actor", 1), name: "Walker", x: -2, z: 1 };
+  const items: SceneItem[] = [
+    {
+      ...makeItem("ground", 1),
+      name: "Walking path",
+      x: -1.25,
+      z: 1,
+      width: 1.8,
+      depth: 8.5,
+    },
+    {
+      ...makeItem("ground", 2),
+      name: "Parking bay",
+      x: 3,
+      z: 0.1,
+      width: 3.2,
+      depth: 5.2,
+      color: "#727875",
+    },
+    { ...makeItem("tree", 1), name: "Oak · left", x: -5.3, z: -3.2 },
+    {
+      ...makeItem("tree", 2),
+      name: "Oak · right",
+      x: 5.1,
+      z: -4.2,
+      height: 5.5,
+    },
+    {
+      ...makeItem("tree", 3),
+      name: "Background tree",
+      x: -1.6,
+      z: -8.5,
+      height: 3.9,
+    },
+    {
+      ...makeItem("bench", 1),
+      name: "Park bench",
+      x: -2.9,
+      z: -2.6,
+      rotation: -18,
+    },
+    {
+      ...makeItem("vehicle", 1),
+      name: "Parked car",
+      x: 3,
+      z: 0.1,
+      rotation: 90,
+    },
+    actor,
+    {
+      ...makeItem("actor", 2),
+      name: "Listener",
+      x: 0.8,
+      z: -2.8,
+      rotation: -30,
+    },
+    camera,
+  ];
+  const shot: Shot = {
+    id: id(),
+    title: "Approach through the park",
+    cameraId: camera.id,
+    notes: "Walker crosses from the near path toward the bench.",
+    duration: 6,
+    aspectRatio: "16:9",
+    actorPaths: {
+      [actor.id]: {
+        waypoints: [{ x: -1.3, y: 0, z: -0.8, rotation: -20 }],
+        end: { x: 0, y: 0, z: -2.2, rotation: -35 },
+      },
+    },
+  };
+  return {
+    id: id(),
+    name: "Park entrance · Exterior",
+    environment: {
+      ground: "grass",
+      skyColor: "#a9cce4",
+      sunAzimuth: 35,
+      sunElevation: 42,
+    },
     items,
     shots: [shot],
     shootOrder: [shot.id],

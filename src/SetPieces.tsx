@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import * as THREE from "three";
 import type { SceneItem } from "./model";
 import Mannequin from "./Mannequin";
+import { Bench, Tree, Vehicle } from "./OutdoorAssets";
 
 const ImportedAsset = lazy(() => import("./ImportedAsset"));
 
@@ -549,12 +550,46 @@ function Light({ item }: { item: SceneItem }) {
   );
 }
 
-export default function SetPiece({ item }: { item: SceneItem }) {
+export default function SetPiece({
+  item,
+  walkPhase,
+}: {
+  item: SceneItem;
+  walkPhase?: number;
+}) {
   switch (item.kind) {
     case "wall":
       return <Wall item={item} />;
     case "actor":
-      return <Mannequin item={item} />;
+      return <Mannequin item={item} walkPhase={walkPhase} />;
+    case "tree":
+      return <Tree item={item} />;
+    case "bench":
+      return <Bench item={item} />;
+    case "vehicle":
+      return <Vehicle item={item} />;
+    case "ground":
+      return (
+        <group>
+          <Box
+            position={[0, item.height / 2, 0]}
+            size={[item.width, item.height, item.depth]}
+            color={item.color ?? "#c3bca9"}
+          />
+          {Array.from({ length: Math.floor(item.depth / 0.8) }, (_, index) => (
+            <Box
+              key={index}
+              position={[
+                0,
+                item.height + 0.001,
+                -item.depth / 2 + (index + 1) * 0.8,
+              ]}
+              size={[item.width, 0.002, 0.008]}
+              color="#949990"
+            />
+          ))}
+        </group>
+      );
     case "table":
       return <Table item={item} />;
     case "chair":

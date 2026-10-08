@@ -17,16 +17,19 @@ Open the address printed by Vite. The app stores the current project in this bro
 
 ![Camera view inside the furnished scene](docs/screenshots/furnished-camera.jpg)
 
+![Exterior scene with actor motion preview](docs/screenshots/exterior-motion.jpg)
+
 ## Current features
 
 - One film with multiple scenes; each scene has a separate editable 3D set.
 - Draw walls on a quarter-meter grid with endpoint snapping, add framed doorways and windows, and position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden drawing mannequins with visible joints, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
 - Add a furnished sample scene without replacing the current scene. All sample objects remain editable.
+- Build an outdoor scene with grass, asphalt, sand, or studio ground; set sky color and sun direction/elevation; add original trees, park benches, vehicles, and paved ground patches. An exterior sample scene demonstrates the catalog.
 - Extend a selected wall into an adjoining room with a doorway, then furnish that room and route a camera move through it with editable waypoints.
 - Import self-contained glTF 2.0 `.glb` assets up to 1 MB. Models are embedded in local project data and JSON exports; browser storage is capped at roughly 3 MB of project JSON.
 - Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Undo and redo project edits; duplicate, hide, and lock set objects.
-- Set actor positions and facing per shot, with marks visible on the plan.
+- Set actor positions and facing per shot, then add an end mark and waypoints for each actor. Preview actor movement with the shot timeline in stage, plan, or camera view; the mannequin shows a simple walk swing during playback.
 - Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity.
 - Switch between orbiting 3D stage, top plan, and camera view.
 - Add shots with separate cameras; choose a sensor gate, focal length, aperture, focus distance, and shot aspect ratio. The camera view shows framing guides and approximate depth-of-field limits.
@@ -42,7 +45,7 @@ This is an early editor, not yet a feature-complete Lensflare equivalent. The ne
 
 1. Modeling tools: connected wall corners, room scale controls, broader snapping, grouping, and a larger original asset catalog.
 2. Cinematography: named camera bodies and lenses, visual depth of field, curved camera paths, collision-aware movement, and take variants.
-3. Performance planning: actor poses and animation library, blocking paths, more lighting modifiers, power routing, and alternate plans.
+3. Performance planning: manual joint posing, an action library, route timing/easing and collision checks, more lighting modifiers, power routing, and alternate plans.
 4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.
 5. Collaboration: project accounts, shareable review links, comments, crew roles, editing, and branding. This requires an optional server; local projects should continue to work without one.
 

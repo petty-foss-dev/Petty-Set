@@ -9,13 +9,40 @@ import {
   TransformControls,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { snapWallPoint, wallEndpoints } from "./model";
+import { actorPoseAt, snapWallPoint, wallEndpoints } from "./model";
 import SetPiece from "./SetPieces";
 import type { SceneItem, SetScene, Shot } from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
 
 export type ViewMode = "stage" | "plan" | "camera";
+
+function surfaceTexture(ground: "grass" | "asphalt" | "sand") {
+  const palette = {
+    grass: ["#7e9b6e", "#6f8c61", "#93a77c", "#a2aa80"],
+    asphalt: ["#777b78", "#666c6c", "#868b87", "#9a9b91"],
+    sand: ["#c7b68c", "#bba980", "#d7c69d", "#e3d4ad"],
+  }[ground];
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 128;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = palette[0];
+  context.fillRect(0, 0, 128, 128);
+  let seed = 217;
+  for (let i = 0; i < 650; i++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const x = seed % 128;
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const y = seed % 128;
+    context.fillStyle = palette[1 + (seed % 3)];
+    context.fillRect(x, y, 1 + (seed % 3), 1 + (seed % 2));
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(70, 70);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
 
 interface Props {
   scene: SetScene;
@@ -171,6 +198,32 @@ function StageContent({
   moveProgress,
 }: Omit<Props, "captureRef">) {
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
+  const visualItems = scene.items.map((item) => {
+    if (item.kind !== "actor") return item;
+    const start = shot?.actorMarks?.[item.id] ?? item;
+    const path = shot?.actorPaths?.[item.id];
+    return {
+      ...item,
+      ...(path ? actorPoseAt(start, path, moveProgress) : start),
+    };
+  });
+  const environment = scene.environment;
+  const ground = environment?.ground ?? "studio";
+  const groundTexture = useMemo(
+    () => (ground === "studio" ? undefined : surfaceTexture(ground)),
+    [ground],
+  );
+  useEffect(() => () => groundTexture?.dispose(), [groundTexture]);
+  const groundColors = {
+    studio: "#d7d7d0",
+    grass: "#7e9b6e",
+    asphalt: "#777b78",
+    sand: "#c7b68c",
+  };
+  const sunAzimuth = ((environment?.sunAzimuth ?? 35) * Math.PI) / 180;
+  const sunElevation = ((environment?.sunElevation ?? 55) * Math.PI) / 180;
+  const daylight =
+    ground === "studio" ? 1 : Math.max(0.15, Math.sin(sunElevation));
   const floorTexture = useMemo(() => {
     if (!scene.floorplan) return undefined;
     const texture = new THREE.TextureLoader().load(scene.floorplan);
@@ -223,11 +276,15 @@ function StageContent({
         cameraWaypoints={shot?.cameraWaypoints}
         moveProgress={moveProgress}
       />
-      <ambientLight intensity={0.95} />
-      <hemisphereLight args={["#f6f3e9", "#8d9290", 1.3]} />
+      <ambientLight intensity={0.35 + daylight * 0.6} />
+      <hemisphereLight args={["#f6f3e9", "#8d9290", 0.4 + daylight * 0.9]} />
       <directionalLight
-        position={[5, 10, 6]}
-        intensity={2}
+        position={[
+          Math.sin(sunAzimuth) * Math.cos(sunElevation) * 15,
+          Math.sin(sunElevation) * 15,
+          Math.cos(sunAzimuth) * Math.cos(sunElevation) * 15,
+        ]}
+        intensity={0.2 + daylight * 1.8}
         castShadow
         shadow-mapSize={[1024, 1024]}
       />
@@ -291,7 +348,11 @@ function StageContent({
         onPointerCancel={() => setWallDraft(null)}
       >
         <planeGeometry args={[100, 100]} />
-        <meshStandardMaterial color="#d7d7d0" roughness={1} />
+        <meshStandardMaterial
+          color={groundTexture ? "#ffffff" : groundColors[ground]}
+          map={groundTexture}
+          roughness={1}
+        />
       </mesh>
       {roomFloor && (
         <group position={[roomFloor.x, 0.006, roomFloor.z]}>
@@ -381,7 +442,7 @@ function StageContent({
           infiniteGrid
         />
       )}
-      {scene.items
+      {visualItems
         .filter(
           (item) =>
             !item.hidden && (mode !== "camera" || item.id !== cameraItem?.id),
@@ -407,10 +468,46 @@ function StageContent({
                 if (tool !== "wall") select(event, item.id);
               }}
             >
-              <SetPiece item={item} />
+              <SetPiece
+                item={item}
+                walkPhase={
+                  shot?.actorPaths?.[item.id]
+                    ? moveProgress * Math.PI * 6
+                    : undefined
+                }
+              />
             </group>
           ),
         )}
+      {mode !== "camera" &&
+        Object.entries(shot?.actorPaths ?? {}).map(([actorId, path]) => {
+          const actor = scene.items.find((item) => item.id === actorId);
+          if (!actor || actor.hidden) return null;
+          const start = shot?.actorMarks?.[actorId] ?? actor;
+          return (
+            <group key={`actor-path-${actorId}`}>
+              <Line
+                points={[start, ...path.waypoints, path.end].map(
+                  (point) =>
+                    [point.x, 0.075, point.z] as [number, number, number],
+                )}
+                color="#4b9e97"
+                lineWidth={2}
+                raycast={() => null}
+              />
+              {[...path.waypoints, path.end].map((point, index) => (
+                <mesh
+                  key={index}
+                  position={[point.x, 0.085, point.z]}
+                  raycast={() => null}
+                >
+                  <sphereGeometry args={[0.08, 12, 8]} />
+                  <meshBasicMaterial color="#4b9e97" />
+                </mesh>
+              ))}
+            </group>
+          );
+        })}
       {mode !== "camera" && cameraItem && shot?.cameraEnd && (
         <group>
           <Line
@@ -470,7 +567,10 @@ export default function Stage(props: Props) {
         captureRef.current = () => gl.domElement.toDataURL("image/png");
       }}
     >
-      <color attach="background" args={["#dce0de"]} />
+      <color
+        attach="background"
+        args={[props.scene.environment?.skyColor ?? "#dce0de"]}
+      />
       <StageContent {...content} />
     </Canvas>
   );

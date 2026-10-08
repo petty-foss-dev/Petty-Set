@@ -45,13 +45,22 @@ import type { ViewMode } from "./Stage";
 import {
   extendRoom,
   furnishedScene,
+  outdoorScene,
   id,
   isProject,
   loadProject,
   makeItem,
   wallBetween,
 } from "./model";
-import type { ItemKind, Project, SceneItem, SetScene, Shot } from "./model";
+import type {
+  ActorPath,
+  ItemKind,
+  Project,
+  SceneEnvironment,
+  SceneItem,
+  SetScene,
+  Shot,
+} from "./model";
 import { historyReducer, projectHistory } from "./history";
 import { aspectRatios, cameraOptics, sensors } from "./cinematography";
 import type { AspectRatio, SensorId } from "./cinematography";
@@ -71,6 +80,10 @@ const itemIcons: Record<ItemKind, typeof Square> = {
   shelf: BookOpen,
   plant: Flower2,
   rug: RectangleHorizontal,
+  tree: Flower2,
+  bench: Grip,
+  vehicle: BoxIcon,
+  ground: RectangleHorizontal,
   asset: BoxIcon,
 };
 const itemNames: Record<ItemKind, string> = {
@@ -85,6 +98,10 @@ const itemNames: Record<ItemKind, string> = {
   shelf: "Bookcase",
   plant: "Plant",
   rug: "Rug",
+  tree: "Tree",
+  bench: "Park bench",
+  vehicle: "Vehicle",
+  ground: "Ground patch",
   asset: "3D asset",
 };
 
@@ -125,6 +142,12 @@ function App() {
     project.scenes.find((value) => value.id === sceneId) ?? project.scenes[0];
   const shot =
     scene.shots.find((value) => value.id === shotId) ?? scene.shots[0];
+  const environment: SceneEnvironment = scene.environment ?? {
+    ground: "studio",
+    skyColor: "#dce0de",
+    sunAzimuth: 35,
+    sunElevation: 55,
+  };
   const stageScene = useMemo(
     () => ({
       ...scene,
@@ -143,13 +166,19 @@ function App() {
       : scene.shootOrder
           .map((value) => scene.shots.find((shot) => shot.id === value))
           .filter((value): value is Shot => !!value);
+  const hasMotion =
+    !!shot?.cameraEnd || !!Object.keys(shot?.actorPaths ?? {}).length;
 
   useEffect(() => {
     localStorage.setItem("petty-set-project", JSON.stringify(project));
   }, [project]);
 
   useEffect(() => {
-    if (!playingMove || !shot?.cameraEnd) return;
+    if (
+      !playingMove ||
+      (!shot?.cameraEnd && !Object.keys(shot?.actorPaths ?? {}).length)
+    )
+      return;
     let handle = 0;
     const tick = (now: number) => {
       const progress = Math.min(
@@ -162,7 +191,7 @@ function App() {
     };
     handle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(handle);
-  }, [playingMove, shot?.cameraEnd, shot?.duration]);
+  }, [playingMove, shot?.cameraEnd, shot?.actorPaths, shot?.duration]);
 
   function resetMove() {
     setPlayingMove(false);
@@ -199,6 +228,20 @@ function App() {
       scenes[index] = updated;
       return { ...current, scenes };
     });
+  }
+
+  function updateEnvironment(patch: Partial<SceneEnvironment>) {
+    updateScene((current) => ({
+      ...current,
+      environment: {
+        ground: "studio",
+        skyColor: "#dce0de",
+        sunAzimuth: 35,
+        sunElevation: 55,
+        ...current.environment,
+        ...patch,
+      },
+    }));
   }
 
   function updateItem(id: string, patch: Partial<SceneItem>) {
@@ -382,10 +425,16 @@ function App() {
       shots: current.shots
         .filter((value) => value.cameraId !== selected.id)
         .map((value) => {
-          if (!value.actorMarks?.[selected.id]) return value;
+          if (
+            !value.actorMarks?.[selected.id] &&
+            !value.actorPaths?.[selected.id]
+          )
+            return value;
           const actorMarks = { ...value.actorMarks };
+          const actorPaths = { ...value.actorPaths };
           delete actorMarks[selected.id];
-          return { ...value, actorMarks };
+          delete actorPaths[selected.id];
+          return { ...value, actorMarks, actorPaths };
         }),
       shootOrder: current.shootOrder.filter(
         (value) => !linkedShots.some((shot) => shot.id === value),
@@ -453,6 +502,15 @@ function App() {
         value.id === shot.id ? { ...value, ...patch } : value,
       ),
     }));
+  }
+
+  function updateActorPath(actorId: string, path?: ActorPath) {
+    if (!shot) return;
+    const actorPaths = { ...shot.actorPaths };
+    if (path) actorPaths[actorId] = path;
+    else delete actorPaths[actorId];
+    updateShot({ actorPaths });
+    resetMove();
   }
 
   function moveShot(direction: -1 | 1) {
@@ -784,6 +842,17 @@ function App() {
                 </option>
               ))}
             </select>
+            <input
+              className="scene-name"
+              aria-label="Scene name"
+              value={scene.name}
+              onChange={(event) =>
+                updateScene((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+            />
             <button
               className="text-button"
               onClick={() => {
@@ -823,6 +892,86 @@ function App() {
             >
               <Sofa size={15} /> Furnished scene
             </button>
+            <button
+              className="text-button"
+              onClick={() => {
+                const next = outdoorScene();
+                setProject((current) => ({
+                  ...current,
+                  scenes: [...current.scenes, next],
+                }));
+                setSceneId(next.id);
+                setShotId(next.shots[0].id);
+                resetMove();
+                setSelectedId(undefined);
+                setMode("stage");
+              }}
+            >
+              <Flower2 size={15} /> Outdoor scene
+            </button>
+          </div>
+          <div className="environment-fields">
+            <h3>Setting</h3>
+            <label>
+              <span>Ground</span>
+              <select
+                value={environment.ground}
+                onChange={(event) =>
+                  updateEnvironment({
+                    ground: event.target.value as SceneEnvironment["ground"],
+                    skyColor:
+                      scene.environment?.skyColor ??
+                      (event.target.value === "studio" ? "#dce0de" : "#a9cce4"),
+                  })
+                }
+              >
+                <option value="studio">Studio</option>
+                <option value="grass">Grass</option>
+                <option value="asphalt">Asphalt</option>
+                <option value="sand">Sand</option>
+              </select>
+            </label>
+            <div className="environment-pair">
+              <label>
+                <span>Sky</span>
+                <input
+                  type="color"
+                  value={environment.skyColor}
+                  onChange={(event) =>
+                    updateEnvironment({ skyColor: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                <span>Sun angle °</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="90"
+                  value={environment.sunElevation}
+                  onChange={(event) =>
+                    updateEnvironment({
+                      sunElevation: Math.max(
+                        0,
+                        Math.min(90, Number(event.target.value)),
+                      ),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <label>
+              <span>Sun direction °</span>
+              <input
+                type="range"
+                min="-180"
+                max="180"
+                value={environment.sunAzimuth}
+                onChange={(event) =>
+                  updateEnvironment({ sunAzimuth: Number(event.target.value) })
+                }
+              />
+            </label>
           </div>
           <div className="section-title">
             <span>
@@ -1037,9 +1186,9 @@ function App() {
           </div>
           <div className="stage-wrap">
             <Stage
-              scene={stageScene}
+              scene={scene}
               shot={shot}
-              selectedId={selectedId}
+              selectedId={moveProgress > 0 ? undefined : selectedId}
               mode={mode}
               tool={tool}
               onSelect={setSelectedId}
@@ -1105,9 +1254,9 @@ function App() {
                   ? "Shot preview · select 3D stage to edit"
                   : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
-            {mode === "camera" && (
+            {(mode === "camera" || (mode === "stage" && hasMotion)) && (
               <div className="camera-actions">
-                {shot?.cameraEnd && (
+                {shot && hasMotion && (
                   <button
                     onClick={() => {
                       moveStartRef.current =
@@ -1120,12 +1269,14 @@ function App() {
                     }}
                   >
                     {playingMove ? <Pause size={16} /> : <Play size={16} />}
-                    {playingMove ? "Pause move" : "Play move"}
+                    {playingMove ? "Pause motion" : "Play motion"}
                   </button>
                 )}
-                <button onClick={capture}>
-                  <Camera size={16} /> Capture frame
-                </button>
+                {mode === "camera" && (
+                  <button onClick={capture}>
+                    <Camera size={16} /> Capture frame
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1291,6 +1442,39 @@ function App() {
                     />
                   </label>
                 )}
+                {(
+                  ["tree", "bench", "vehicle", "ground"] as ItemKind[]
+                ).includes(selected.kind) && (
+                  <label className="full-field">
+                    <span>
+                      {selected.kind === "tree"
+                        ? "Foliage"
+                        : selected.kind === "vehicle"
+                          ? "Paint"
+                          : selected.kind === "ground"
+                            ? "Surface color"
+                            : "Wood finish"}
+                    </span>
+                    <input
+                      type="color"
+                      value={
+                        selected.color ??
+                        {
+                          tree: "#617d4d",
+                          bench: "#a4744d",
+                          vehicle: "#547988",
+                          ground: "#c3bca9",
+                        }[
+                          selected.kind as
+                            "tree" | "bench" | "vehicle" | "ground"
+                        ]
+                      }
+                      onChange={(event) =>
+                        updateItem(selected.id, { color: event.target.value })
+                      }
+                    />
+                  </label>
+                )}
                 <div className="field-section">
                   <h3>Transform</h3>
                   <div className="field-grid">
@@ -1347,6 +1531,153 @@ function App() {
                     ))}
                   </div>
                 </div>
+                {selected.kind === "actor" && shot && (
+                  <div className="field-section actor-motion-fields">
+                    <h3>Actor movement</h3>
+                    <label className="full-field">
+                      <input
+                        type="checkbox"
+                        checked={!!shot.actorPaths?.[selected.id]}
+                        onChange={(event) =>
+                          updateActorPath(
+                            selected.id,
+                            event.target.checked
+                              ? {
+                                  waypoints: [],
+                                  end: {
+                                    x: Number((selected.x + 1).toFixed(2)),
+                                    y: selected.y,
+                                    z: Number((selected.z - 1).toFixed(2)),
+                                    rotation: selected.rotation,
+                                  },
+                                }
+                              : undefined,
+                          )
+                        }
+                      />{" "}
+                      Move during this shot
+                    </label>
+                    {shot.actorPaths?.[selected.id] && (
+                      <>
+                        {shot.actorPaths[selected.id].waypoints.map(
+                          (point, index) => (
+                            <div className="waypoint-fields" key={index}>
+                              <div className="waypoint-heading">
+                                Actor waypoint {index + 1}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateActorPath(selected.id, {
+                                      ...shot.actorPaths![selected.id],
+                                      waypoints: shot.actorPaths![
+                                        selected.id
+                                      ].waypoints.filter((_, i) => i !== index),
+                                    })
+                                  }
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <div className="field-grid">
+                                {(["x", "y", "z", "rotation"] as const).map(
+                                  (key) => (
+                                    <label key={key}>
+                                      <span>
+                                        {key === "rotation"
+                                          ? "Facing °"
+                                          : key.toUpperCase()}
+                                      </span>
+                                      <input
+                                        type="number"
+                                        step={key === "rotation" ? 1 : 0.1}
+                                        value={Number(point[key].toFixed(2))}
+                                        onChange={(event) =>
+                                          updateActorPath(selected.id, {
+                                            ...shot.actorPaths![selected.id],
+                                            waypoints: shot.actorPaths![
+                                              selected.id
+                                            ].waypoints.map((entry, i) =>
+                                              i === index
+                                                ? {
+                                                    ...entry,
+                                                    [key]: Number(
+                                                      event.target.value,
+                                                    ),
+                                                  }
+                                                : entry,
+                                            ),
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          ),
+                        )}
+                        <button
+                          type="button"
+                          className="waypoint-add"
+                          onClick={() => {
+                            const path = shot.actorPaths![selected.id];
+                            const previous = path.waypoints.at(-1) ?? selected;
+                            updateActorPath(selected.id, {
+                              ...path,
+                              waypoints: [
+                                ...path.waypoints,
+                                {
+                                  x: Number(
+                                    ((previous.x + path.end.x) / 2).toFixed(2),
+                                  ),
+                                  y: Number(
+                                    ((previous.y + path.end.y) / 2).toFixed(2),
+                                  ),
+                                  z: Number(
+                                    ((previous.z + path.end.z) / 2).toFixed(2),
+                                  ),
+                                  rotation: previous.rotation,
+                                },
+                              ],
+                            });
+                          }}
+                        >
+                          <Plus size={14} /> Add actor waypoint
+                        </button>
+                        <div className="field-grid">
+                          {(["x", "y", "z", "rotation"] as const).map((key) => (
+                            <label key={key}>
+                              <span>
+                                End{" "}
+                                {key === "rotation"
+                                  ? "facing °"
+                                  : key.toUpperCase()}
+                              </span>
+                              <input
+                                type="number"
+                                step={key === "rotation" ? 1 : 0.1}
+                                value={Number(
+                                  shot.actorPaths![selected.id].end[
+                                    key
+                                  ].toFixed(2),
+                                )}
+                                onChange={(event) =>
+                                  updateActorPath(selected.id, {
+                                    ...shot.actorPaths![selected.id],
+                                    end: {
+                                      ...shot.actorPaths![selected.id].end,
+                                      [key]: Number(event.target.value),
+                                    },
+                                  })
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 {selected.kind === "wall" && (
                   <div className="field-section">
                     <h3>Opening</h3>
@@ -1827,23 +2158,24 @@ function App() {
                         ),
                       )}
                     </div>
-                    <label>
-                      Preview position
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={Math.round(moveProgress * 100)}
-                        onChange={(event) => {
-                          setPlayingMove(false);
-                          setMoveProgress(Number(event.target.value) / 100);
-                          setMode("camera");
-                        }}
-                      />
-                    </label>
                   </>
                 )}
               </div>
+              {hasMotion && (
+                <label>
+                  Preview motion
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={Math.round(moveProgress * 100)}
+                    onChange={(event) => {
+                      setPlayingMove(false);
+                      setMoveProgress(Number(event.target.value) / 100);
+                    }}
+                  />
+                </label>
+              )}
               <label>
                 Notes
                 <textarea
