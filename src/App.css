@@ -409,6 +409,14 @@
 .stage-wrap canvas {
   display: block;
 }
+.frame-guide {
+  position: absolute;
+  inset: 5%;
+  width: 90%;
+  height: 90%;
+  pointer-events: none;
+  filter: drop-shadow(0 0 2px #202a2a99);
+}
 .stage-hint {
   position: absolute;
   bottom: 16px;
@@ -721,6 +729,16 @@
 .shot-inspector textarea {
   resize: vertical;
   font-weight: 400;
+}
+.shot-inspector select {
+  width: 100%;
+  border: 1px solid #e4e7e2;
+  background: #f8f9f6;
+  border-radius: 5px;
+  padding: 7px;
+  color: #323838;
+  font-size: 12px;
+  font-weight: 600;
 }
 .unit {
   font-weight: 400;

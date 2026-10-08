@@ -37,6 +37,9 @@ import type { ViewMode } from "./Stage";
 import { id, isProject, loadProject, makeItem, wallBetween } from "./model";
 import type { ItemKind, Project, SceneItem, SetScene, Shot } from "./model";
 import { historyReducer, projectHistory } from "./history";
+import { aspectRatios, cameraOptics, sensors } from "./cinematography";
+import type { AspectRatio, SensorId } from "./cinematography";
+import { shotListCSV } from "./shotList";
 import "./App.css";
 
 const itemIcons: Record<ItemKind, typeof Square> = {
@@ -270,6 +273,9 @@ function App() {
       z: (source?.z ?? 3) + 0.5,
       rotation: source?.rotation ?? 0,
       focalLength: source?.focalLength ?? 35,
+      sensor: source?.sensor ?? "super35",
+      aperture: source?.aperture ?? 2.8,
+      focusDistance: source?.focusDistance ?? 3,
     };
     const next: Shot = {
       id: id(),
@@ -277,6 +283,7 @@ function App() {
       cameraId: camera.id,
       notes: "",
       duration: 5,
+      aspectRatio: shot?.aspectRatio ?? "16:9",
       actorMarks: Object.fromEntries(
         scene.items
           .filter((item) => item.kind === "actor")
@@ -419,6 +426,15 @@ function App() {
   }
 
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
+  const optics = cameraItem
+    ? cameraOptics(
+        cameraItem.sensor ?? "super35",
+        cameraItem.focalLength ?? 35,
+        cameraItem.aperture ?? 2.8,
+        cameraItem.focusDistance ?? 3,
+        shot?.aspectRatio ?? "16:9",
+      )
+    : undefined;
 
   return (
     <div className="app-shell">
@@ -503,6 +519,19 @@ function App() {
             </button>
             <button onClick={exportPDF}>
               <FileText size={16} /> Storyboard PDF{" "}
+              <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
+            </button>
+            <button
+              onClick={() => {
+                download(
+                  `${project.name || "project"}-${order}-shot-list.csv`,
+                  shotListCSV(scene, orderedShots),
+                  "text/csv;charset=utf-8",
+                );
+                setShowExport(false);
+              }}
+            >
+              <FileText size={16} /> Shot list CSV{" "}
               <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
             </button>
             <button
@@ -712,7 +741,7 @@ function App() {
             </div>
             <div className="view-label">
               {mode === "camera"
-                ? `${cameraItem?.focalLength ?? 35} mm · Super 35`
+                ? `${cameraItem?.focalLength ?? 35} mm · ${sensors[cameraItem?.sensor ?? "super35"].label}`
                 : mode === "plan"
                   ? "TOP VIEW · METERS"
                   : "PERSPECTIVE VIEW"}
@@ -739,6 +768,56 @@ function App() {
               onAddWall={addWall}
               captureRef={captureRef}
             />
+            {mode === "camera" && shot && (
+              <svg
+                className="frame-guide"
+                viewBox={`0 0 ${aspectRatios[shot.aspectRatio ?? "16:9"]} 1`}
+                preserveAspectRatio="xMidYMid meet"
+                aria-label={`${shot.aspectRatio ?? "16:9"} framing guide`}
+              >
+                <rect
+                  x="0.01"
+                  y="0.01"
+                  width={aspectRatios[shot.aspectRatio ?? "16:9"] - 0.02}
+                  height="0.98"
+                  fill="none"
+                  stroke="#ffffffcc"
+                  strokeWidth="0.006"
+                />
+                <line
+                  x1={aspectRatios[shot.aspectRatio ?? "16:9"] / 3}
+                  x2={aspectRatios[shot.aspectRatio ?? "16:9"] / 3}
+                  y1="0.01"
+                  y2="0.99"
+                  stroke="#ffffff55"
+                  strokeWidth="0.003"
+                />
+                <line
+                  x1={(aspectRatios[shot.aspectRatio ?? "16:9"] * 2) / 3}
+                  x2={(aspectRatios[shot.aspectRatio ?? "16:9"] * 2) / 3}
+                  y1="0.01"
+                  y2="0.99"
+                  stroke="#ffffff55"
+                  strokeWidth="0.003"
+                />
+                <line
+                  x1="0.01"
+                  x2={aspectRatios[shot.aspectRatio ?? "16:9"] - 0.01}
+                  y1="0.333"
+                  y2="0.333"
+                  stroke="#ffffff55"
+                  strokeWidth="0.003"
+                />
+                <line
+                  x1="0.01"
+                  x2={aspectRatios[shot.aspectRatio ?? "16:9"] - 0.01}
+                  y1="0.667"
+                  y2="0.667"
+                  stroke="#ffffff55"
+                  strokeWidth="0.003"
+                />
+              </svg>
+            )}
             <div className="stage-hint">
               {tool === "wall" && mode === "plan"
                 ? "Drag on the plan to draw a wall · snaps to 0.25 m"
@@ -1037,7 +1116,24 @@ function App() {
                 )}
                 {selected.kind === "camera" && (
                   <div className="field-section">
-                    <h3>Lens</h3>
+                    <h3>Camera and lens</h3>
+                    <label className="full-field">
+                      <span>Sensor gate</span>
+                      <select
+                        value={selected.sensor ?? "super35"}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            sensor: event.target.value as SensorId,
+                          })
+                        }
+                      >
+                        {Object.entries(sensors).map(([id, sensor]) => (
+                          <option key={id} value={id}>
+                            {sensor.label} · {sensor.width} × {sensor.height} mm
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="full-field">
                       <span>Focal length</span>
                       <div>
@@ -1046,16 +1142,78 @@ function App() {
                           min="8"
                           max="400"
                           value={selected.focalLength ?? 35}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const focalLength = Math.max(
+                              8,
+                              Number(event.target.value),
+                            );
                             updateItem(selected.id, {
-                              focalLength: Number(event.target.value),
-                            })
-                          }
+                              focalLength,
+                              focusDistance: Math.max(
+                                selected.focusDistance ?? 3,
+                                focalLength / 1000 + 0.01,
+                              ),
+                            });
+                          }}
                         />
                         <em>mm</em>
                       </div>
                     </label>
-                    <p className="field-note">Super 35 sensor · 24 mm height</p>
+                    <label className="full-field">
+                      <span>Aperture</span>
+                      <div>
+                        <input
+                          type="number"
+                          min="0.7"
+                          max="32"
+                          step="0.1"
+                          value={selected.aperture ?? 2.8}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              aperture: Math.max(
+                                0.7,
+                                Number(event.target.value),
+                              ),
+                            })
+                          }
+                        />
+                        <em>f/</em>
+                      </div>
+                    </label>
+                    <label className="full-field">
+                      <span>Focus distance</span>
+                      <div>
+                        <input
+                          type="number"
+                          min={Math.max(
+                            0.1,
+                            (selected.focalLength ?? 35) / 1000 + 0.01,
+                          )}
+                          step="0.1"
+                          value={selected.focusDistance ?? 3}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              focusDistance: Math.max(
+                                0.1,
+                                (selected.focalLength ?? 35) / 1000 + 0.01,
+                                Number(event.target.value),
+                              ),
+                            })
+                          }
+                        />
+                        <em>m</em>
+                      </div>
+                    </label>
+                    {selected.id === cameraItem?.id && optics && (
+                      <p className="field-note">
+                        {optics.horizontalFov.toFixed(1)}° ×{" "}
+                        {optics.verticalFov.toFixed(1)}° field of view ·
+                        approximate focus {optics.nearFocus.toFixed(2)} m to{" "}
+                        {Number.isFinite(optics.farFocus)
+                          ? `${optics.farFocus.toFixed(2)} m`
+                          : "∞"}
+                      </p>
+                    )}
                   </div>
                 )}
                 {selected.kind === "light" && (
@@ -1133,6 +1291,23 @@ function App() {
                     updateShot({ title: event.target.value })
                   }
                 />
+              </label>
+              <label>
+                Aspect ratio
+                <select
+                  value={shot.aspectRatio ?? "16:9"}
+                  onChange={(event) =>
+                    updateShot({
+                      aspectRatio: event.target.value as AspectRatio,
+                    })
+                  }
+                >
+                  {Object.keys(aspectRatios).map((ratio) => (
+                    <option key={ratio} value={ratio}>
+                      {ratio}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Notes

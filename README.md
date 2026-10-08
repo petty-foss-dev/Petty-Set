@@ -19,7 +19,8 @@ Open the address printed by Vite. The app stores the current project in this bro
 - Set actor positions and facing per shot, with marks visible on the plan.
 - Import an image floor plan as a set reference.
 - Switch between orbiting 3D stage, top plan, and camera view.
-- Add shots with separate cameras; arrange story and shoot order independently.
+- Add shots with separate cameras; choose a sensor gate, focal length, aperture, focus distance, and shot aspect ratio. The camera view shows framing guides and approximate depth-of-field limits.
+- Arrange story and shoot order independently and export a shot-list CSV in either order.
 - Capture camera frames into the storyboard; edit shot notes and duration.
 - Export editable JSON, view PNG, and storyboard PDF.
 
@@ -30,7 +31,7 @@ This is an early editor, not yet a feature-complete Lensflare equivalent. The ne
 See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and build order.
 
 1. Modeling tools: connected walls, room scale controls, broader snapping, grouping, and a larger original asset catalog.
-2. Cinematography: more sensors and lenses, focus and depth of field, framelines, camera paths, and take variants.
+2. Cinematography: named camera bodies and lenses, visual depth of field, camera paths, and take variants.
 3. Performance planning: actor poses and animation library, blocking paths, lighting modifiers, power routing, and alternate plans.
 4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.
 5. Collaboration: project accounts, shareable review links, comments, crew roles, editing, and branding. This requires an optional server; local projects should continue to work without one.

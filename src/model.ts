@@ -1,3 +1,6 @@
+import { aspectRatios, sensors } from "./cinematography.ts";
+import type { AspectRatio, SensorId } from "./cinematography.ts";
+
 export type ItemKind =
   "wall" | "actor" | "camera" | "light" | "table" | "chair" | "box";
 
@@ -15,6 +18,9 @@ export interface SceneItem {
   intensity?: number;
   spread?: number;
   focalLength?: number;
+  sensor?: SensorId;
+  aperture?: number;
+  focusDistance?: number;
   color?: string;
   hidden?: boolean;
   locked?: boolean;
@@ -34,6 +40,7 @@ export interface Shot {
   notes: string;
   frame?: string;
   duration: number;
+  aspectRatio?: AspectRatio;
   actorMarks?: Record<
     string,
     { x: number; y: number; z: number; rotation: number }
@@ -109,9 +116,23 @@ export function isProject(value: unknown): value is Project {
         ["width", "height", "depth"].some(
           (key) => (item[key] as number) <= 0,
         ) ||
-        ["intensity", "spread", "focalLength"].some(
+        [
+          "intensity",
+          "spread",
+          "focalLength",
+          "aperture",
+          "focusDistance",
+        ].some(
           (key) => item[key] !== undefined && !isFiniteNumber(item[key]),
         ) ||
+        ["focalLength", "aperture", "focusDistance"].some(
+          (key) => item[key] !== undefined && (item[key] as number) <= 0,
+        ) ||
+        (item.kind === "camera" &&
+          ((item.focusDistance as number | undefined) ?? 3) * 1000 <=
+            ((item.focalLength as number | undefined) ?? 35)) ||
+        (item.sensor !== undefined &&
+          (!isString(item.sensor) || !(item.sensor in sensors))) ||
         ["hidden", "locked"].some(
           (key) => item[key] !== undefined && typeof item[key] !== "boolean",
         ) ||
@@ -142,6 +163,9 @@ export function isProject(value: unknown): value is Project {
         !isString(shot.cameraId) ||
         items.get(shot.cameraId) !== "camera" ||
         !isFiniteNumber(shot.duration) ||
+        (shot.aspectRatio !== undefined &&
+          (!isString(shot.aspectRatio) ||
+            !(shot.aspectRatio in aspectRatios))) ||
         (shot.frame !== undefined && !isString(shot.frame))
       )
         return false;
@@ -198,6 +222,9 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
         depth: 0.5,
         z: 3,
         focalLength: 35,
+        sensor: "super35",
+        aperture: 2.8,
+        focusDistance: 3,
       };
     case "light":
       return {
@@ -255,6 +282,7 @@ export function sampleProject(): Project {
     cameraId: camera.id,
     notes: "Establish the room and both actors.",
     duration: 5,
+    aspectRatio: "16:9" as AspectRatio,
   };
   return {
     version: 1,

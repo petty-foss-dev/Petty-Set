@@ -9,6 +9,8 @@ import {
 } from "@react-three/drei";
 import * as THREE from "three";
 import type { SceneItem, SetScene, Shot } from "./model";
+import { aspectRatios, cameraOptics } from "./cinematography";
+import type { AspectRatio } from "./cinematography";
 
 export type ViewMode = "stage" | "plan" | "camera";
 
@@ -30,11 +32,13 @@ interface Props {
 function CameraRig({
   mode,
   cameraItem,
+  aspectRatio,
 }: {
   mode: ViewMode;
   cameraItem?: SceneItem;
+  aspectRatio: AspectRatio;
 }) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   useEffect(() => {
     if (mode === "plan") {
       camera.position.set(0, 20, 0.01);
@@ -46,8 +50,24 @@ function CameraRig({
     camera.updateProjectionMatrix();
   }, [mode, camera]);
   if (!cameraItem || mode !== "camera") return null;
+  const gateFov = cameraOptics(
+    cameraItem.sensor ?? "super35",
+    cameraItem.focalLength ?? 35,
+    cameraItem.aperture ?? 2.8,
+    cameraItem.focusDistance ?? 3,
+    aspectRatio,
+  ).verticalFov;
+  const frameHeight = Math.min(
+    size.height * 0.9,
+    (size.width * 0.9) / aspectRatios[aspectRatio],
+  );
   const fov =
-    (2 * Math.atan(24 / (2 * (cameraItem.focalLength ?? 35))) * 180) / Math.PI;
+    (2 *
+      Math.atan(
+        Math.tan((gateFov * Math.PI) / 360) * (size.height / frameHeight),
+      ) *
+      180) /
+    Math.PI;
   const yaw = (cameraItem.rotation * Math.PI) / 180;
   return (
     <PerspectiveCamera
@@ -357,7 +377,11 @@ function StageContent({
   };
   return (
     <>
-      <CameraRig mode={mode} cameraItem={cameraItem} />
+      <CameraRig
+        mode={mode}
+        cameraItem={cameraItem}
+        aspectRatio={shot?.aspectRatio ?? "16:9"}
+      />
       <ambientLight intensity={0.95} />
       <hemisphereLight args={["#f6f3e9", "#8d9290", 1.3]} />
       <directionalLight

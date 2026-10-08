@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { historyReducer, projectHistory } from "../src/history.ts";
 import { isProject, sampleProject, wallBetween } from "../src/model.ts";
+import { cameraOptics } from "../src/cinematography.ts";
+import { shotListCSV } from "../src/shotList.ts";
 
 test("undo restores a deleted shot and redo removes it again", () => {
   const project = sampleProject();
@@ -55,4 +57,22 @@ test("project import rejects broken camera and actor references", () => {
     missing: { x: 0, y: 0, z: 0, rotation: 0 },
   };
   assert.equal(isProject(missingActor), false);
+});
+
+test("sensor and delivery aspect change the effective field of view", () => {
+  const s35 = cameraOptics("super35", 35, 2.8, 3, "16:9");
+  const fullFrame = cameraOptics("fullFrame", 35, 2.8, 3, "16:9");
+  const widescreen = cameraOptics("super35", 35, 2.8, 3, "2.39:1");
+  assert.ok(fullFrame.horizontalFov > s35.horizontalFov);
+  assert.ok(widescreen.verticalFov < s35.verticalFov);
+  assert.ok(s35.nearFocus < 3 && s35.farFocus > 3);
+});
+
+test("shot list CSV preserves order and escapes production notes", () => {
+  const scene = sampleProject().scenes[0];
+  scene.shots[0].notes = 'Move to "door", then hold\nfor cue';
+  const csv = shotListCSV(scene, scene.shots);
+  assert.ok(csv.startsWith("\uFEFF"));
+  assert.ok(csv.includes('"Move to ""door"", then hold\nfor cue"'));
+  assert.ok(csv.includes('"Super 35","35","2.8","3","16:9"'));
 });
