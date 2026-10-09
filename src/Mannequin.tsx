@@ -191,7 +191,7 @@ function grainTexture() {
     streak(
       random() * width,
       (random() - 0.5) * 22,
-      `rgba(156,98,48,${0.035 + random() * 0.05})`,
+      `rgba(156,98,48,${0.018 + random() * 0.025})`,
       6 + random() * 16,
     );
   }
@@ -200,7 +200,7 @@ function grainTexture() {
     streak(
       random() * width,
       (random() - 0.5) * 16,
-      strong ? "rgba(112,64,28,.17)" : "rgba(117,69,30,.065)",
+      strong ? "rgba(112,64,28,.09)" : "rgba(117,69,30,.028)",
       strong ? 1.4 : 0.7,
     );
   }
@@ -209,12 +209,12 @@ function grainTexture() {
     [width * 0.78, height * 0.74],
   ];
   for (const [x, y] of knots) {
-    context.fillStyle = "rgba(118,70,32,.16)";
+    context.fillStyle = "rgba(118,70,32,.1)";
     context.beginPath();
     context.ellipse(x, y, 2.5, 5, 0, 0, Math.PI * 2);
     context.fill();
     for (let ring = 1; ring <= 6; ring++) {
-      context.strokeStyle = `rgba(112,64,28,${0.15 - ring * 0.018})`;
+      context.strokeStyle = `rgba(112,64,28,${0.09 - ring * 0.01})`;
       context.lineWidth = 0.9;
       context.beginPath();
       context.ellipse(x, y, 2.5 + ring * 3, 6 + ring * 8, 0, 0, Math.PI * 2);
