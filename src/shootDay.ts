@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { sensors } from "./cinematography.ts";
-import { wallEndpoints, wallOpenings } from "./model.ts";
+import { resolveSceneLayers, wallEndpoints, wallOpenings } from "./model.ts";
 import type { SceneItem, SetScene, Shot } from "./model.ts";
 import { resolveLightingPlan } from "./lightingPlans.ts";
 import { floorplanSVG } from "./floorplan.ts";
@@ -23,7 +23,7 @@ const xml = (value: string) =>
   );
 
 export function shootDaySVG(projectName: string, scene: SetScene, shot: Shot) {
-  const resolved = resolveLightingPlan(scene, shot);
+  const resolved = resolveSceneLayers(resolveLightingPlan(scene, shot));
   const items = resolved.items.map((item) =>
     item.kind === "actor"
       ? { ...item, ...shot.actorMarks?.[item.id] }
@@ -37,11 +37,17 @@ export function shootDaySVG(projectName: string, scene: SetScene, shot: Shot) {
   const lights = items.filter((item) => item.kind === "light" && !item.hidden);
   const actors = items.filter((item) => item.kind === "actor" && !item.hidden);
   const sources = items.filter((item) => item.kind === "power" && !item.hidden);
-  const camera = items.find((item) => item.id === shot.cameraId);
+  const camera = items.find(
+    (item) => item.id === shot.cameraId && !item.hidden,
+  );
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
   const wallPoints = walls.flatMap(wallEndpoints);
-  const minX = Math.min(...wallPoints.map((point) => point.x)) - 1;
-  const minZ = Math.min(...wallPoints.map((point) => point.z)) - 1;
+  const minX = wallPoints.length
+    ? Math.min(...wallPoints.map((point) => point.x)) - 1
+    : -1;
+  const minZ = wallPoints.length
+    ? Math.min(...wallPoints.map((point) => point.z)) - 1
+    : -1;
   const cables = lights
     .map((light) => {
       const source = sources.find((item) => item.id === light.powerSourceId);
@@ -145,7 +151,7 @@ export function renderShootDaySheet(
   index: number,
   total: number,
 ) {
-  const resolved = resolveLightingPlan(scene, shot);
+  const resolved = resolveSceneLayers(resolveLightingPlan(scene, shot));
   const visible = resolved.items.filter((item) => !item.hidden);
   const walls = visible.filter((item) => item.kind === "wall");
   const actors = visible.filter((item) => item.kind === "actor");

@@ -1,4 +1,10 @@
-import { id, wallBetween, wallEndpoints, wallOpenings } from "./model.ts";
+import {
+  id,
+  resolveSceneLayers,
+  wallBetween,
+  wallEndpoints,
+  wallOpenings,
+} from "./model.ts";
 import type { FloorFinish, RoomFinish, SceneItem, SetScene } from "./model.ts";
 
 export type PlanPoint = { x: number; z: number };
@@ -468,7 +474,8 @@ export function planRooms(items: SceneItem[]): PlanRoom[] {
   return rooms;
 }
 
-export function floorplanSVG(scene: SetScene): string {
+export function floorplanSVG(source: SetScene): string {
+  const scene = resolveSceneLayers(source);
   const walls = scene.items.filter(
     (item) => item.kind === "wall" && !item.hidden,
   );

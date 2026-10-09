@@ -174,6 +174,7 @@ export interface WallOpening {
 
 export interface SceneItem {
   id: string;
+  layerId?: string;
   kind: ItemKind;
   name: string;
   x: number;
@@ -210,6 +211,34 @@ export interface SceneItem {
   locked?: boolean;
   opening?: WallOpening;
   additionalOpenings?: WallOpening[];
+}
+
+export interface SceneLayer {
+  id: string;
+  name: string;
+  hidden?: boolean;
+  locked?: boolean;
+}
+
+export const baseLayerId = "base";
+
+export function sceneLayers(scene: SetScene): SceneLayer[] {
+  return scene.layers ?? [{ id: baseLayerId, name: "Base" }];
+}
+
+export function resolveSceneLayers(scene: SetScene): SetScene {
+  const layers = new Map(sceneLayers(scene).map((layer) => [layer.id, layer]));
+  return {
+    ...scene,
+    items: scene.items.map((item) => {
+      const layer = layers.get(item.layerId ?? baseLayerId);
+      return {
+        ...item,
+        hidden: !!item.hidden || !!layer?.hidden,
+        locked: !!item.locked || !!layer?.locked,
+      };
+    }),
+  };
 }
 
 export function wallOpenings(wall: SceneItem): WallOpening[] {
@@ -333,6 +362,7 @@ export interface ShotLightingPlan {
 export interface SetScene {
   id: string;
   name: string;
+  layers?: SceneLayer[];
   items: SceneItem[];
   shots: Shot[];
   shootOrder: string[];
@@ -482,6 +512,34 @@ export function isProject(value: unknown): value is Project {
       )
         return false;
     }
+    if (scene.layers !== undefined) {
+      if (
+        !Array.isArray(scene.layers) ||
+        !scene.layers.some(
+          (layer) => isRecord(layer) && layer.id === baseLayerId,
+        )
+      )
+        return false;
+      const layerIds = new Set<string>();
+      const layerNames = new Set<string>();
+      for (const layer of scene.layers) {
+        if (
+          !isRecord(layer) ||
+          !isString(layer.id) ||
+          !layer.id ||
+          layerIds.has(layer.id) ||
+          !isString(layer.name) ||
+          !layer.name.trim() ||
+          layer.name.length > 60 ||
+          layerNames.has(layer.name.trim().toLowerCase()) ||
+          (layer.hidden !== undefined && typeof layer.hidden !== "boolean") ||
+          (layer.locked !== undefined && typeof layer.locked !== "boolean")
+        )
+          return false;
+        layerIds.add(layer.id);
+        layerNames.add(layer.name.trim().toLowerCase());
+      }
+    }
     sceneIds.add(scene.id);
     const items = new Map<string, ItemKind>();
     for (const item of scene.items) {
@@ -491,6 +549,11 @@ export function isProject(value: unknown): value is Project {
         items.has(item.id) ||
         !itemKinds.includes(item.kind as ItemKind) ||
         !isString(item.name) ||
+        (item.layerId !== undefined &&
+          (!isString(item.layerId) ||
+            !sceneLayers(scene as unknown as SetScene).some(
+              (layer) => layer.id === item.layerId,
+            ))) ||
         !["x", "y", "z", "rotation", "width", "height", "depth"].every((key) =>
           isFiniteNumber(item[key]),
         ) ||

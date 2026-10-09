@@ -625,7 +625,7 @@ function StageContent({
   };
   const roomFloor = useMemo(() => {
     const points = scene.items
-      .filter((item) => item.kind === "wall")
+      .filter((item) => item.kind === "wall" && !item.hidden)
       .flatMap(wallEndpoints);
     if (points.length < 4) return null;
     const xs = points.map((point) => point.x);

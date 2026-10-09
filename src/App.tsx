@@ -60,6 +60,9 @@ import {
   wallOpenings,
   addWallOpening,
   replaceWallOpening,
+  baseLayerId,
+  sceneLayers,
+  resolveSceneLayers,
 } from "./model";
 import type {
   ActorPath,
@@ -242,6 +245,12 @@ function App() {
   const [order, setOrder] = useState<"story" | "shoot">("story");
   const [shotView, setShotView] = useState<"boards" | "list">("boards");
   const [showAdd, setShowAdd] = useState(false);
+  const [layerEditor, setLayerEditor] = useState<{
+    sceneId: string;
+    id?: string;
+    name: string;
+  } | null>(null);
+  const [layerError, setLayerError] = useState("");
   const [showExport, setShowExport] = useState(false);
   const [showFloorplanControls, setShowFloorplanControls] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
@@ -271,14 +280,14 @@ function App() {
   };
   const stageScene = useMemo(() => {
     const resolved = resolveLightingPlan(scene, shot);
-    return {
+    return resolveSceneLayers({
       ...resolved,
       items: resolved.items.map((item) =>
         item.kind === "actor" && shot?.actorMarks?.[item.id]
           ? { ...item, ...shot.actorMarks[item.id] }
           : item,
       ),
-    };
+    });
   }, [scene, shot]);
   const lightReading = currentLightSample
     ? sampleFloorIlluminance(stageScene.items, currentLightSample)
@@ -287,7 +296,14 @@ function App() {
   const selectedItems = selectedIds
     .map((id) => stageScene.items.find((item) => item.id === id))
     .filter((item): item is SceneItem => !!item);
-  const planRoomList = useMemo(() => planRooms(scene.items), [scene.items]);
+  const layers = sceneLayers(scene);
+  const selectedLayer = layers.find(
+    (layer) => layer.id === (selected?.layerId ?? baseLayerId),
+  );
+  const planRoomList = useMemo(
+    () => planRooms(stageScene.items),
+    [stageScene.items],
+  );
   const planRoomFinishes = useMemo(
     () => planRoomList.map((room) => roomFinishFor(room, scene.roomFinishes)),
     [planRoomList, scene.roomFinishes],
@@ -423,7 +439,7 @@ function App() {
 
   function updateRoomFinish(roomIndex: number, finish: FloorFinish) {
     updateScene((current) => {
-      const room = planRooms(current.items)[roomIndex];
+      const room = planRooms(resolveSceneLayers(current).items)[roomIndex];
       if (!room) return current;
       return {
         ...current,
@@ -432,13 +448,102 @@ function App() {
     });
   }
 
+  function addLayer() {
+    let number = layers.length + 1;
+    while (
+      layers.some((layer) => layer.name.toLowerCase() === `layer ${number}`)
+    )
+      number++;
+    setLayerEditor({ sceneId: scene.id, name: `Layer ${number}` });
+    setLayerError("");
+  }
+
+  function renameLayer(layerId: string) {
+    const layer = layers.find((entry) => entry.id === layerId);
+    if (!layer) return;
+    setLayerEditor({ sceneId: scene.id, id: layer.id, name: layer.name });
+    setLayerError("");
+  }
+
+  function saveLayer() {
+    if (!layerEditor || layerEditor.sceneId !== scene.id) return;
+    const name = layerEditor.name.trim();
+    if (
+      !name ||
+      name.length > 60 ||
+      layers.some(
+        (layer) =>
+          layer.id !== layerEditor.id &&
+          layer.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      setLayerError("Enter a unique layer name, up to 60 characters.");
+      return;
+    }
+    updateScene((current) => ({
+      ...current,
+      layers: layerEditor.id
+        ? sceneLayers(current).map((entry) =>
+            entry.id === layerEditor.id ? { ...entry, name } : entry,
+          )
+        : [...sceneLayers(current), { id: id(), name }],
+    }));
+    setLayerEditor(null);
+    setLayerError("");
+  }
+
+  function toggleLayer(layerId: string, key: "hidden" | "locked") {
+    updateScene((current) => ({
+      ...current,
+      layers: sceneLayers(current).map((layer) =>
+        layer.id === layerId ? { ...layer, [key]: !layer[key] } : layer,
+      ),
+    }));
+  }
+
+  function removeLayer(layerId: string) {
+    if (layerId === baseLayerId) return;
+    updateScene((current) => ({
+      ...current,
+      layers: sceneLayers(current).filter((layer) => layer.id !== layerId),
+      items: current.items.map((item) =>
+        item.layerId === layerId ? { ...item, layerId: undefined } : item,
+      ),
+    }));
+  }
+
+  function assignSelectionLayer(layerId: string) {
+    updateScene((current) => {
+      const editable = new Set(
+        resolveSceneLayers(current)
+          .items.filter((item) => selectedIds.includes(item.id) && !item.locked)
+          .map((item) => item.id),
+      );
+      return {
+        ...current,
+        items: current.items.map((item) =>
+          editable.has(item.id)
+            ? {
+                ...item,
+                layerId: layerId === baseLayerId ? undefined : layerId,
+              }
+            : item,
+        ),
+      };
+    });
+  }
+
   function updateItem(id: string, patch: Partial<SceneItem>) {
     const source = scene.items.find((item) => item.id === id);
+    const effective = stageScene.items.find((item) => item.id === id);
+    if (effective?.locked && !("locked" in patch)) return;
     if (
       source?.kind === "light" &&
       shot?.activeLightingPlanId &&
-      !source.locked &&
-      !["name", "width", "depth", "locked"].some((key) => key in patch)
+      !effective?.locked &&
+      !["name", "width", "depth", "locked", "layerId"].some(
+        (key) => key in patch,
+      )
     ) {
       updateScene((current) => ({
         ...current,
@@ -460,7 +565,7 @@ function App() {
     if (
       source?.kind === "actor" &&
       shot &&
-      !source.locked &&
+      !effective?.locked &&
       ["x", "y", "z", "rotation"].some((key) => key in patch)
     ) {
       const currentMark = shot.actorMarks?.[id] ?? {
@@ -487,7 +592,10 @@ function App() {
     }
     updateScene((current) => {
       const item = current.items.find((value) => value.id === id);
-      if (!item || (item.locked && !("locked" in patch || "hidden" in patch)))
+      const layer = sceneLayers(current).find(
+        (layer) => layer.id === (item?.layerId ?? baseLayerId),
+      );
+      if (!item || ((item.locked || layer?.locked) && !("locked" in patch)))
         return current;
       return {
         ...current,
@@ -622,14 +730,24 @@ function App() {
     from: { x: number; z: number },
     to: { x: number; z: number },
   ) {
-    updateScene((current) => ({
-      ...current,
-      items: moveSharedCorner(current.items, from, to),
-    }));
+    updateScene((current) => {
+      const effective = resolveSceneLayers(current);
+      const moved = moveSharedCorner(effective.items, from, to);
+      return {
+        ...current,
+        items: current.items.map((item, index) => ({
+          ...item,
+          x: moved[index].x,
+          z: moved[index].z,
+          width: moved[index].width,
+          rotation: moved[index].rotation,
+        })),
+      };
+    });
   }
 
   function duplicateSelected() {
-    if (!selected) return;
+    if (!selected || selected.locked) return;
     const copy: SceneItem = {
       ...selected,
       id: id(),
@@ -651,52 +769,63 @@ function App() {
   ) {
     const positions = new Map(
       selectedItems
-        .filter((item) => !item.locked)
+        .filter((item) => !item.locked && !item.hidden)
         .map((item) => [item.id, position(item)]),
     );
     if (!positions.size) return;
-    updateScene((current) => ({
-      ...current,
-      items: current.items.map((item) => {
-        const next = positions.get(item.id);
-        if (
-          !next ||
-          item.locked ||
-          (item.kind === "actor" && shot) ||
-          (item.kind === "light" && shot?.activeLightingPlanId)
-        )
-          return item;
-        return { ...item, ...next };
-      }),
-      shots: current.shots.map((entry) => {
-        if (entry.id !== shot?.id) return entry;
-        const actorMarks = { ...entry.actorMarks };
-        let lightingPlans = entry.lightingPlans;
-        for (const item of current.items) {
+    updateScene((current) => {
+      const lockedIds = new Set(
+        resolveSceneLayers(current)
+          .items.filter((item) => item.locked)
+          .map((item) => item.id),
+      );
+      return {
+        ...current,
+        items: current.items.map((item) => {
           const next = positions.get(item.id);
-          if (!next || item.locked) continue;
-          if (item.kind === "actor") {
-            actorMarks[item.id] = {
-              x: next.x,
-              y: entry.actorMarks?.[item.id]?.y ?? item.y,
-              z: next.z,
-              rotation: entry.actorMarks?.[item.id]?.rotation ?? item.rotation,
-            };
-          } else if (item.kind === "light" && entry.activeLightingPlanId) {
-            lightingPlans = lightingPlans?.map((plan) =>
-              plan.id === entry.activeLightingPlanId
-                ? updateLightingFixture(plan, item, next)
-                : plan,
-            );
+          if (
+            !next ||
+            lockedIds.has(item.id) ||
+            (item.kind === "actor" && shot) ||
+            (item.kind === "light" && shot?.activeLightingPlanId)
+          )
+            return item;
+          return { ...item, ...next };
+        }),
+        shots: current.shots.map((entry) => {
+          if (entry.id !== shot?.id) return entry;
+          const actorMarks = { ...entry.actorMarks };
+          let lightingPlans = entry.lightingPlans;
+          for (const item of current.items) {
+            const next = positions.get(item.id);
+            if (!next || lockedIds.has(item.id)) continue;
+            if (item.kind === "actor") {
+              actorMarks[item.id] = {
+                x: next.x,
+                y: entry.actorMarks?.[item.id]?.y ?? item.y,
+                z: next.z,
+                rotation:
+                  entry.actorMarks?.[item.id]?.rotation ?? item.rotation,
+              };
+            } else if (item.kind === "light" && entry.activeLightingPlanId) {
+              lightingPlans = lightingPlans?.map((plan) =>
+                plan.id === entry.activeLightingPlanId
+                  ? updateLightingFixture(plan, item, next)
+                  : plan,
+              );
+            }
           }
-        }
-        return { ...entry, actorMarks, lightingPlans };
-      }),
-    }));
+          return { ...entry, actorMarks, lightingPlans };
+        }),
+      };
+    });
   }
 
   function duplicateSelection() {
-    const copies = selectedItems.map((item) => ({
+    const sources = selectedItems.filter(
+      (item) => !item.locked && !item.hidden,
+    );
+    const copies = sources.map((item) => ({
       ...item,
       id: id(),
       name: `${item.name} copy`,
@@ -706,7 +835,7 @@ function App() {
       locked: false,
     }));
     const copiedIds = new Map(
-      copies.map((copy, index) => [selectedItems[index].id, copy.id]),
+      copies.map((copy, index) => [sources[index].id, copy.id]),
     );
     updateScene((current) => ({
       ...current,
@@ -789,7 +918,7 @@ function App() {
   }
 
   function deleteSelected() {
-    if (!selected) return;
+    if (!selected || selected.locked) return;
     const linkedShots = scene.shots.filter(
       (value) => value.cameraId === selected.id,
     );
@@ -1900,6 +2029,117 @@ function App() {
           </div>
           <div className="section-title">
             <span>
+              LAYERS <b>{layers.length}</b>
+            </span>
+            <button
+              className="icon-button"
+              aria-label="Add layer"
+              onClick={addLayer}
+            >
+              <Plus size={17} />
+            </button>
+          </div>
+          {layerEditor?.sceneId === scene.id && (
+            <form
+              className="layer-editor"
+              onSubmit={(event) => {
+                event.preventDefault();
+                saveLayer();
+              }}
+            >
+              <label htmlFor="layer-name-input">
+                {layerEditor.id ? "Rename layer" : "New layer"}
+              </label>
+              <div className="layer-editor-fields">
+                <input
+                  id="layer-name-input"
+                  aria-label={
+                    layerEditor.id ? "Rename layer name" : "New layer name"
+                  }
+                  autoFocus
+                  maxLength={60}
+                  value={layerEditor.name}
+                  onChange={(event) => {
+                    setLayerEditor({
+                      ...layerEditor,
+                      name: event.target.value,
+                    });
+                    setLayerError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setLayerEditor(null);
+                      setLayerError("");
+                    }
+                  }}
+                />
+                <button type="submit" aria-label="Save layer">
+                  Save
+                </button>
+                <button
+                  type="button"
+                  aria-label="Cancel layer edit"
+                  onClick={() => {
+                    setLayerEditor(null);
+                    setLayerError("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {layerError && (
+                <p className="layer-error" role="alert">
+                  {layerError}
+                </p>
+              )}
+            </form>
+          )}
+          <div className="layer-list">
+            {layers.map((layer) => (
+              <div className="layer-row" key={layer.id}>
+                <button
+                  className="layer-name"
+                  aria-label={`Rename layer ${layer.name}`}
+                  title="Rename layer"
+                  onClick={() => renameLayer(layer.id)}
+                >
+                  {layer.name}
+                </button>
+                <span className="layer-count">
+                  {
+                    scene.items.filter(
+                      (item) => (item.layerId ?? baseLayerId) === layer.id,
+                    ).length
+                  }
+                </span>
+                <button
+                  aria-label={`${layer.hidden ? "Show" : "Hide"} layer ${layer.name}`}
+                  title={layer.hidden ? "Show layer" : "Hide layer"}
+                  onClick={() => toggleLayer(layer.id, "hidden")}
+                >
+                  {layer.hidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+                <button
+                  aria-label={`${layer.locked ? "Unlock" : "Lock"} layer ${layer.name}`}
+                  title={layer.locked ? "Unlock layer" : "Lock layer"}
+                  onClick={() => toggleLayer(layer.id, "locked")}
+                >
+                  {layer.locked ? <Lock size={15} /> : <LockOpen size={15} />}
+                </button>
+                {layer.id !== baseLayerId && (
+                  <button
+                    aria-label={`Delete layer ${layer.name}`}
+                    title="Move objects to Base and delete layer"
+                    onClick={() => removeLayer(layer.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="section-title">
+            <span>
               SET OBJECTS <b>{scene.items.length}</b>
             </span>
             <button
@@ -1931,7 +2171,7 @@ function App() {
               return (
                 <button
                   key={item.id}
-                  className={`object-row ${selectedIds.includes(item.id) ? "selected" : ""}`}
+                  className={`object-row ${selectedIds.includes(item.id) ? "selected" : ""} ${stageScene.items.find((value) => value.id === item.id)?.hidden ? "layer-hidden" : ""}`}
                   aria-pressed={selectedIds.includes(item.id)}
                   onClick={(event) => {
                     selectObject(item.id, event.shiftKey);
@@ -1942,6 +2182,13 @@ function App() {
                     <Icon size={16} />
                   </span>
                   <span>{item.name}</span>
+                  <span className="object-layer">
+                    {
+                      layers.find(
+                        (layer) => layer.id === (item.layerId ?? baseLayerId),
+                      )?.name
+                    }
+                  </span>
                   <span className="object-type">{itemNames[item.kind]}</span>
                 </button>
               );
@@ -2618,6 +2865,23 @@ function App() {
                 {selectedItems.filter((item) => item.locked).length} locked ·
                 Shift-click to change selection
               </p>
+              <label className="layer-assignment">
+                Move unlocked to layer
+                <select
+                  aria-label="Selection layer"
+                  value=""
+                  onChange={(event) => assignSelectionLayer(event.target.value)}
+                >
+                  <option value="" disabled>
+                    Choose layer
+                  </option>
+                  {layers.map((layer) => (
+                    <option key={layer.id} value={layer.id}>
+                      {layer.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className="batch-actions">
                 <button
                   onClick={() =>
@@ -2707,13 +2971,21 @@ function App() {
                 <button
                   aria-label="Duplicate object"
                   title="Duplicate object"
+                  disabled={selected.locked}
                   onClick={duplicateSelected}
                 >
                   <Copy size={16} />
                 </button>
                 <button
                   aria-label={selected.hidden ? "Show object" : "Hide object"}
-                  title={selected.hidden ? "Show object" : "Hide object"}
+                  title={
+                    selectedLayer?.hidden
+                      ? "Show the layer first"
+                      : selected.hidden
+                        ? "Show object"
+                        : "Hide object"
+                  }
+                  disabled={selected.locked || !!selectedLayer?.hidden}
                   onClick={() =>
                     updateItem(selected.id, { hidden: !selected.hidden })
                   }
@@ -2723,6 +2995,7 @@ function App() {
                 <button
                   aria-label={selected.locked ? "Unlock object" : "Lock object"}
                   title={selected.locked ? "Unlock object" : "Lock object"}
+                  disabled={!!selectedLayer?.locked}
                   onClick={() =>
                     updateItem(selected.id, { locked: !selected.locked })
                   }
@@ -2734,6 +3007,28 @@ function App() {
                   )}
                 </button>
               </div>
+              <label className="layer-assignment">
+                Layer
+                <select
+                  aria-label="Object layer"
+                  value={selected.layerId ?? baseLayerId}
+                  disabled={selected.locked}
+                  onChange={(event) =>
+                    updateItem(selected.id, {
+                      layerId:
+                        event.target.value === baseLayerId
+                          ? undefined
+                          : event.target.value,
+                    })
+                  }
+                >
+                  {layers.map((layer) => (
+                    <option key={layer.id} value={layer.id}>
+                      {layer.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <fieldset className="inspector-fields" disabled={selected.locked}>
                 {selected.kind === "actor" && shot && (
                   <div className="actor-mark-note">
@@ -3758,7 +4053,11 @@ function App() {
                   </div>
                 )}
               </fieldset>
-              <button className="delete-button" onClick={deleteSelected}>
+              <button
+                className="delete-button"
+                disabled={selected.locked}
+                onClick={deleteSelected}
+              >
                 <Trash2 size={15} /> Delete object
               </button>
             </div>

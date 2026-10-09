@@ -17,7 +17,10 @@ import {
   addWallOpening,
   replaceWallOpening,
   wallOpenings,
+  baseLayerId,
+  resolveSceneLayers,
 } from "../src/model.ts";
+
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
 import { actorActionPose } from "../src/actorActions.ts";
@@ -49,6 +52,55 @@ import {
   splitWall,
 } from "../src/floorplan.ts";
 
+test("scene layers keep old projects valid and hide and lock assigned objects", () => {
+  const project = sampleProject();
+  const scene = project.scenes[0];
+  assert.equal(isProject(project), true);
+  const actor = scene.items.find((item) => item.kind === "actor");
+  const wall = scene.items.find((item) => item.kind === "wall");
+  assert.ok(actor && wall);
+  const initialPlan = floorplanSVG(scene);
+  assert.match(initialPlan, new RegExp(actor.name));
+  scene.layers = [
+    { id: baseLayerId, name: "Base" },
+    { id: "cast", name: "Cast", hidden: true, locked: true },
+  ];
+  actor.layerId = "cast";
+  assert.equal(isProject(JSON.parse(JSON.stringify(project))), true);
+  const resolved = resolveSceneLayers(scene);
+  const hiddenActor = resolved.items.find((item) => item.id === actor.id);
+  assert.equal(hiddenActor.hidden, true);
+  assert.equal(hiddenActor.locked, true);
+  assert.equal(actor.hidden, undefined);
+  assert.doesNotMatch(floorplanSVG(scene), new RegExp(actor.name));
+  assert.doesNotMatch(
+    shootDaySVG(project.name, scene, scene.shots[0]),
+    new RegExp(actor.name),
+  );
+  wall.layerId = "cast";
+  const [corner] = wallEndpoints(wall);
+  const moved = moveSharedCorner(resolveSceneLayers(scene).items, corner, {
+    x: corner.x + 1,
+    z: corner.z,
+  });
+  assert.equal(moved.find((item) => item.id === wall.id).x, wall.x);
+  assert.equal(moved.find((item) => item.id === wall.id).z, wall.z);
+  scene.layers[0].hidden = true;
+  assert.match(
+    shootDaySVG(project.name, scene, scene.shots[0]),
+    /No drawn walls in this scene/,
+  );
+  assert.doesNotMatch(
+    shootDaySVG(project.name, scene, scene.shots[0]),
+    /Infinity|NaN/,
+  );
+  scene.layers[0].hidden = false;
+  wall.layerId = "missing";
+  assert.equal(isProject(project), false);
+  wall.layerId = undefined;
+  scene.layers[1].name = "Base";
+  assert.equal(isProject(project), false);
+});
 test("rectangular rooms share walls and report enclosed floor area", () => {
   const first = rectangularRoom([], { x: 0, z: 0 }, { x: 4, z: 3 });
   assert.equal(first.length, 4);
