@@ -585,6 +585,47 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+.reference-notice {
+  margin: 0 19px 8px;
+  color: #6e5338;
+  font-size: 11px;
+}
+.shot-reference-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 8px 0 3px;
+}
+.shot-reference-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid #d8c7ab;
+  border-radius: 5px;
+  background: #fffaf1;
+  color: #493d30;
+  font-size: 11px;
+}
+.shot-reference-name {
+  margin: 5px 0 0;
+  color: #786d60;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.shot-reference-preview {
+  margin-bottom: 10px;
+}
+.shot-reference-preview img {
+  display: block;
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border: 1px solid #d8c7ab;
+  border-radius: 5px;
+  background: #e7dfd0;
 }
 .order-switch button {
   padding: 6px 9px;

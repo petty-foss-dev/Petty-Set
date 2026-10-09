@@ -141,6 +141,26 @@ function download(name: string, contents: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
+async function imageReference(file: File) {
+  if (!file.type.startsWith("image/") || file.size > 12_000_000)
+    throw new Error("Use image files smaller than 12 MB.");
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 960 / bitmap.width, 960 / bitmap.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image processing is unavailable.");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    return { name: file.name, image: canvas.toDataURL("image/jpeg", 0.72) };
+  } finally {
+    bitmap.close();
+  }
+}
+
 function App() {
   const [history, dispatch] = useReducer(historyReducer, undefined, () =>
     projectHistory(loadProject()),
@@ -172,6 +192,9 @@ function App() {
   const importRef = useRef<HTMLInputElement>(null);
   const floorplanRef = useRef<HTMLInputElement>(null);
   const assetRef = useRef<HTMLInputElement>(null);
+  const batchReferenceRef = useRef<HTMLInputElement>(null);
+  const shotReferenceRef = useRef<HTMLInputElement>(null);
+  const [referenceNotice, setReferenceNotice] = useState("");
   const moveStartRef = useRef(0);
   const scene =
     project.scenes.find((value) => value.id === sceneId) ?? project.scenes[0];
@@ -692,6 +715,98 @@ function App() {
     updateShot({ frame });
   }
 
+  async function importShotReference(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !shot) return;
+    try {
+      const reference = await imageReference(file);
+      if (
+        JSON.stringify(project).length -
+          (shot.reference?.image.length ?? 0) +
+          reference.image.length >
+        4_000_000
+      )
+        throw new Error(
+          "This project is too large for local autosave. Export a backup before adding more images.",
+        );
+      updateShot({ reference });
+      setReferenceNotice(`Added ${file.name} to ${shot.title}.`);
+    } catch (error) {
+      setReferenceNotice(
+        error instanceof Error ? error.message : "Could not import the image.",
+      );
+    }
+  }
+
+  async function importStoryboardImages(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+    if (files.length > 24) {
+      setReferenceNotice("Import up to 24 storyboard images at a time.");
+      return;
+    }
+    try {
+      const ordered = files.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true }),
+      );
+      const references = [];
+      for (const file of ordered) references.push(await imageReference(file));
+      if (
+        JSON.stringify(project).length +
+          references.reduce((sum, value) => sum + value.image.length, 0) >
+        4_000_000
+      )
+        throw new Error(
+          "These images exceed local autosave capacity. Import a smaller batch or export a project backup.",
+        );
+      const source = scene.items.find((item) => item.id === shot?.cameraId);
+      const newCameras = references.map((_, index) => ({
+        ...makeItem(
+          "camera",
+          scene.items.filter((item) => item.kind === "camera").length +
+            index +
+            1,
+        ),
+        x: (source?.x ?? 0) + 0.5 + index * 0.15,
+        z: (source?.z ?? 3) + 0.5,
+        rotation: source?.rotation ?? 0,
+        focalLength: source?.focalLength ?? 35,
+        cameraBody: source?.cameraBody ?? "cinema",
+        sensor: source?.sensor ?? "super35",
+        aperture: source?.aperture ?? 2.8,
+        focusDistance: source?.focusDistance ?? 3,
+      }));
+      const newShots: Shot[] = references.map((reference, index) => ({
+        id: id(),
+        title: reference.name.replace(/\.[^.]+$/, ""),
+        cameraId: newCameras[index].id,
+        notes: "",
+        duration: 5,
+        aspectRatio: shot?.aspectRatio ?? "16:9",
+        reference,
+      }));
+      updateScene((current) => ({
+        ...current,
+        items: [...current.items, ...newCameras],
+        shots: [...current.shots, ...newShots],
+        shootOrder: [
+          ...current.shootOrder,
+          ...newShots.map((entry) => entry.id),
+        ],
+      }));
+      setShotId(newShots[0].id);
+      setReferenceNotice(
+        `Imported ${newShots.length} storyboard ${newShots.length === 1 ? "image" : "images"} as shots.`,
+      );
+    } catch (error) {
+      setReferenceNotice(
+        error instanceof Error ? error.message : "Could not import the images.",
+      );
+    }
+  }
+
   async function exportPDF() {
     const { jsPDF } = await import("jspdf");
     const pdf = new jsPDF({
@@ -717,12 +832,29 @@ function App() {
       pdf.setTextColor(26, 29, 31);
       pdf.setFontSize(17);
       pdf.text(`${index + 1}. ${entry.title}`, 12, 39);
-      if (entry.frame) pdf.addImage(entry.frame, "PNG", 12, 48, 174, 98);
-      else {
+      const boardImage = entry.frame ?? entry.reference?.image;
+      if (boardImage) {
+        const dimensions = pdf.getImageProperties(boardImage);
+        const scale = Math.min(174 / dimensions.width, 98 / dimensions.height);
+        const width = dimensions.width * scale;
+        const height = dimensions.height * scale;
+        pdf.addImage(
+          boardImage,
+          entry.frame ? "PNG" : "JPEG",
+          12 + (174 - width) / 2,
+          48 + (98 - height) / 2,
+          width,
+          height,
+        );
+      } else {
         pdf.setFillColor(227, 229, 227);
         pdf.rect(12, 48, 174, 98, "F");
         pdf.setFontSize(11);
-        pdf.text("Capture a camera frame to show it here.", 22, 98);
+        pdf.text(
+          "Capture a frame or import a reference to show it here.",
+          22,
+          98,
+        );
       }
       pdf.setFontSize(11);
       pdf.text(entry.notes || "No shot notes", 196, 56, { maxWidth: 88 });
@@ -973,6 +1105,21 @@ function App() {
           type="file"
           accept=".glb,model/gltf-binary"
           onChange={importAsset}
+        />
+        <input
+          ref={batchReferenceRef}
+          hidden
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={importStoryboardImages}
+        />
+        <input
+          ref={shotReferenceRef}
+          hidden
+          type="file"
+          accept="image/*"
+          onChange={importShotReference}
         />
       </header>
 
@@ -1668,8 +1815,20 @@ function App() {
                 <button className="small-primary" onClick={addShot}>
                   <Plus size={16} /> Add shot
                 </button>
+                <button
+                  className="small-primary"
+                  onClick={() => batchReferenceRef.current?.click()}
+                  title="Create shots from several storyboard images"
+                >
+                  <Upload size={16} /> Import boards
+                </button>
               </div>
             </div>
+            {referenceNotice && (
+              <p className="reference-notice" role="status">
+                {referenceNotice}
+              </p>
+            )}
             <div className="shot-strip">
               {orderedShots.map((entry, index) => (
                 <button
@@ -1678,8 +1837,15 @@ function App() {
                   onClick={() => activateShot(entry)}
                 >
                   <div className="shot-thumb">
-                    {entry.frame ? (
-                      <img src={entry.frame} alt="Captured shot" />
+                    {entry.frame || entry.reference ? (
+                      <img
+                        src={entry.frame ?? entry.reference?.image}
+                        alt={
+                          entry.frame
+                            ? "Captured shot"
+                            : `Reference: ${entry.reference?.name}`
+                        }
+                      />
                     ) : (
                       <>
                         <Video size={23} />
@@ -2711,6 +2877,31 @@ function App() {
                   }
                 />
               </label>
+              <div className="shot-reference-actions">
+                <button onClick={() => shotReferenceRef.current?.click()}>
+                  <FileImage size={15} />{" "}
+                  {shot.reference ? "Replace reference" : "Add reference image"}
+                </button>
+                {shot.reference && (
+                  <button
+                    onClick={() => updateShot({ reference: undefined })}
+                    aria-label="Remove reference image"
+                  >
+                    <Trash2 size={15} /> Remove
+                  </button>
+                )}
+              </div>
+              {shot.reference && (
+                <div className="shot-reference-preview">
+                  <img
+                    src={shot.reference.image}
+                    alt={`Reference: ${shot.reference.name}`}
+                  />
+                  <p className="shot-reference-name">
+                    Reference: {shot.reference.name}
+                  </p>
+                </div>
+              )}
               <label>
                 Aspect ratio
                 <select

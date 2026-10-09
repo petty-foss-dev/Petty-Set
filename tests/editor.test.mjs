@@ -321,6 +321,18 @@ test("mannequin joints are saved per shot and validated", () => {
   assert.equal(isProject(orphan), false);
 });
 
+test("shot references survive project import validation", () => {
+  const project = sampleProject();
+  project.scenes[0].shots[0].reference = {
+    name: "board-01.jpg",
+    image: "data:image/jpeg;base64,/9j/",
+  };
+  assert.equal(isProject(project), true);
+  const invalid = structuredClone(project);
+  invalid.scenes[0].shots[0].reference.image = "https://example.com/board.jpg";
+  assert.equal(isProject(invalid), false);
+});
+
 test("furnished set connects two camera setups, actor actions, and power", () => {
   const project = sampleProject();
   const scene = project.scenes[0];

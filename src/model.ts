@@ -211,6 +211,7 @@ export interface Shot {
   cameraId: string;
   notes: string;
   frame?: string;
+  reference?: { name: string; image: string };
   duration: number;
   aspectRatio?: AspectRatio;
   actorMarks?: Record<string, ActorMark>;
@@ -467,7 +468,12 @@ export function isProject(value: unknown): value is Project {
         (shot.aspectRatio !== undefined &&
           (!isString(shot.aspectRatio) ||
             !(shot.aspectRatio in aspectRatios))) ||
-        (shot.frame !== undefined && !isString(shot.frame))
+        (shot.frame !== undefined && !isString(shot.frame)) ||
+        (shot.reference !== undefined &&
+          (!isRecord(shot.reference) ||
+            !isString(shot.reference.name) ||
+            !isString(shot.reference.image) ||
+            !shot.reference.image.startsWith("data:image/jpeg;base64,")))
       )
         return false;
       if (shot.actorMarks !== undefined) {
