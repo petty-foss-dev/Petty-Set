@@ -1,0 +1,416 @@
+import { id, wallBetween, wallEndpoints } from "./model.ts";
+import type { SceneItem, SetScene } from "./model.ts";
+
+export type PlanPoint = { x: number; z: number };
+export type PlanRoom = { points: PlanPoint[]; area: number; center: PlanPoint };
+
+const key = (point: PlanPoint) => {
+  const coordinate = (value: number) => {
+    const rounded = Math.round(value * 1000) / 1000;
+    return rounded === 0 ? "0" : String(rounded);
+  };
+  return `${coordinate(point.x)},${coordinate(point.z)}`;
+};
+const near = (a: PlanPoint, b: PlanPoint) =>
+  Math.hypot(a.x - b.x, a.z - b.z) < 0.01;
+
+export function rectangularRoom(
+  items: SceneItem[],
+  start: PlanPoint,
+  end: PlanPoint,
+): SceneItem[] {
+  const left = Math.min(start.x, end.x);
+  const right = Math.max(start.x, end.x);
+  const top = Math.min(start.z, end.z);
+  const bottom = Math.max(start.z, end.z);
+  if (right - left < 0.5 || bottom - top < 0.5) return items;
+  const corners = [
+    { x: left, z: top },
+    { x: right, z: top },
+    { x: right, z: bottom },
+    { x: left, z: bottom },
+  ];
+  const walls = items.filter((item) => item.kind === "wall");
+  const additions: SceneItem[] = [];
+  for (let index = 0; index < 4; index++) {
+    const a = corners[index];
+    const b = corners[(index + 1) % 4];
+    const shared = walls.find((wall) => {
+      const [start, end] = wallEndpoints(wall);
+      return (
+        (near(start, a) && near(end, b)) || (near(start, b) && near(end, a))
+      );
+    });
+    if (shared) continue;
+    additions.push({
+      ...wallBetween(a, b, walls.length + additions.length + 1),
+      name: `Room wall ${walls.length + additions.length + 1}`,
+    });
+  }
+  return [...items, ...additions];
+}
+
+export function moveSharedCorner(
+  items: SceneItem[],
+  from: PlanPoint,
+  to: PlanPoint,
+): SceneItem[] {
+  return items.map((item) => {
+    if (item.kind !== "wall" || item.locked) return item;
+    const [start, end] = wallEndpoints(item);
+    const movedStart = near(start, from);
+    const movedEnd = near(end, from);
+    if (!movedStart && !movedEnd) return item;
+    const a = movedStart ? to : start;
+    const b = movedEnd ? to : end;
+    if (Math.hypot(a.x - b.x, a.z - b.z) < 0.25) return item;
+    const geometry = wallBetween(a, b, 1);
+    return {
+      ...item,
+      x: geometry.x,
+      z: geometry.z,
+      width: geometry.width,
+      rotation: geometry.rotation,
+    };
+  });
+}
+
+export function canSplitWall(wall: SceneItem): boolean {
+  if (
+    wall.kind !== "wall" ||
+    wall.locked ||
+    wall.width < 1 ||
+    wall.roomExtended
+  )
+    return false;
+  if (!wall.opening) return true;
+  return Math.abs(wall.opening.offset) - wall.opening.width / 2 >= 0.08;
+}
+
+export function splitWall(items: SceneItem[], wallId: string): SceneItem[] {
+  const wall = items.find((item) => item.id === wallId);
+  if (!wall || !canSplitWall(wall)) return items;
+  const [start, end] = wallEndpoints(wall);
+  const middle = { x: (start.x + end.x) / 2, z: (start.z + end.z) / 2 };
+  const left = wallBetween(start, middle, 1);
+  const right = wallBetween(middle, end, 1);
+  const openingOnLeft = wall.opening && wall.opening.offset < 0;
+  const openingOnRight = wall.opening && wall.opening.offset > 0;
+  const first: SceneItem = {
+    ...wall,
+    x: left.x,
+    z: left.z,
+    width: left.width,
+    rotation: left.rotation,
+    opening: openingOnLeft
+      ? { ...wall.opening!, offset: wall.opening!.offset + wall.width / 4 }
+      : undefined,
+  };
+  const second: SceneItem = {
+    ...wall,
+    id: id(),
+    name: `${wall.name} · segment 2`,
+    x: right.x,
+    z: right.z,
+    width: right.width,
+    rotation: right.rotation,
+    opening: openingOnRight
+      ? { ...wall.opening!, offset: wall.opening!.offset - wall.width / 4 }
+      : undefined,
+  };
+  return items.flatMap((item) =>
+    item.id === wallId ? [first, second] : [item],
+  );
+}
+
+function intersection(
+  a: PlanPoint,
+  b: PlanPoint,
+  c: PlanPoint,
+  d: PlanPoint,
+): PlanPoint | null {
+  const ab = { x: b.x - a.x, z: b.z - a.z };
+  const cd = { x: d.x - c.x, z: d.z - c.z };
+  const denominator = ab.x * cd.z - ab.z * cd.x;
+  if (Math.abs(denominator) < 1e-8) return null;
+  const ac = { x: c.x - a.x, z: c.z - a.z };
+  const t = (ac.x * cd.z - ac.z * cd.x) / denominator;
+  const u = (ac.x * ab.z - ac.z * ab.x) / denominator;
+  if (t < -1e-7 || t > 1 + 1e-7 || u < -1e-7 || u > 1 + 1e-7) return null;
+  return { x: a.x + t * ab.x, z: a.z + t * ab.z };
+}
+
+function splitAt(wall: SceneItem, point: PlanPoint): SceneItem[] {
+  const [start, end] = wallEndpoints(wall);
+  const leftLength = Math.hypot(point.x - start.x, point.z - start.z);
+  const rightLength = Math.hypot(end.x - point.x, end.z - point.z);
+  if (leftLength < 0.25 || rightLength < 0.25) return [wall];
+  const openingDistance = wall.opening
+    ? wall.width / 2 + wall.opening.offset
+    : undefined;
+  if (
+    openingDistance !== undefined &&
+    Math.abs(openingDistance - leftLength) < wall.opening!.width / 2 + 0.08
+  )
+    return [wall];
+  const first = wallBetween(start, point, 1);
+  const second = wallBetween(point, end, 1);
+  const openingOnFirst =
+    openingDistance !== undefined && openingDistance < leftLength;
+  return [
+    {
+      ...wall,
+      x: first.x,
+      z: first.z,
+      width: first.width,
+      rotation: first.rotation,
+      opening: openingOnFirst
+        ? { ...wall.opening!, offset: openingDistance! - leftLength / 2 }
+        : undefined,
+    },
+    {
+      ...wall,
+      id: id(),
+      name: `${wall.name} · segment 2`,
+      x: second.x,
+      z: second.z,
+      width: second.width,
+      rotation: second.rotation,
+      opening:
+        openingDistance !== undefined && !openingOnFirst
+          ? {
+              ...wall.opening!,
+              offset: openingDistance - leftLength - rightLength / 2,
+            }
+          : undefined,
+    },
+  ];
+}
+
+export function insertPlanWall(
+  items: SceneItem[],
+  wall: SceneItem,
+): SceneItem[] {
+  const [start, end] = wallEndpoints(wall);
+  if (
+    items.some((item) => {
+      if (item.kind !== "wall") return false;
+      const [a, b] = wallEndpoints(item);
+      return (
+        (near(a, start) && near(b, end)) || (near(a, end) && near(b, start))
+      );
+    })
+  )
+    return items;
+  const crossing = items
+    .filter((item) => item.kind === "wall")
+    .flatMap((item) => {
+      const [a, b] = wallEndpoints(item);
+      const point = intersection(start, end, a, b);
+      return point ? [{ wallId: item.id, point }] : [];
+    });
+  let result = items;
+  for (const { wallId, point } of crossing) {
+    result = result.flatMap((item) =>
+      item.id === wallId ? splitAt(item, point) : [item],
+    );
+  }
+  const sorted = [start, ...crossing.map((entry) => entry.point), end]
+    .sort(
+      (a, b) =>
+        Math.hypot(a.x - start.x, a.z - start.z) -
+        Math.hypot(b.x - start.x, b.z - start.z),
+    )
+    .filter(
+      (point, index, points) => index === 0 || !near(point, points[index - 1]),
+    );
+  const segments = sorted.slice(0, -1).flatMap((point, index) => {
+    const next = sorted[index + 1];
+    if (Math.hypot(next.x - point.x, next.z - point.z) < 0.25) return [];
+    const geometry = wallBetween(point, next, 1);
+    return [
+      {
+        ...wall,
+        id: index === 0 ? wall.id : id(),
+        name: index === 0 ? wall.name : `${wall.name} · segment ${index + 1}`,
+        x: geometry.x,
+        z: geometry.z,
+        width: geometry.width,
+        rotation: geometry.rotation,
+      },
+    ];
+  });
+  return [...result, ...segments];
+}
+
+export function calibratedPlacement(
+  placement: NonNullable<SetScene["floorplanPlacement"]>,
+  first: PlanPoint,
+  second: PlanPoint,
+  meters: number,
+): NonNullable<SetScene["floorplanPlacement"]> {
+  const measured = Math.hypot(second.x - first.x, second.z - first.z);
+  if (!Number.isFinite(meters) || meters <= 0 || measured < 0.01)
+    return placement;
+  const factor = meters / measured;
+  return {
+    ...placement,
+    width: placement.width * factor,
+    height: placement.height * factor,
+  };
+}
+
+export function planRooms(items: SceneItem[]): PlanRoom[] {
+  const edges = new Map<
+    string,
+    { from: PlanPoint; to: PlanPoint; wallId: string }[]
+  >();
+  for (const wall of items) {
+    if (wall.kind !== "wall" || wall.hidden) continue;
+    const [a, b] = wallEndpoints(wall);
+    if (near(a, b)) continue;
+    for (const [from, to] of [
+      [a, b],
+      [b, a],
+    ]) {
+      const list = edges.get(key(from)) ?? [];
+      list.push({ from, to, wallId: wall.id });
+      edges.set(key(from), list);
+    }
+  }
+  for (const list of edges.values())
+    list.sort(
+      (a, b) =>
+        Math.atan2(a.to.z - a.from.z, a.to.x - a.from.x) -
+        Math.atan2(b.to.z - b.from.z, b.to.x - b.from.x),
+    );
+  const visited = new Set<string>();
+  const rooms: PlanRoom[] = [];
+  for (const list of edges.values()) {
+    for (const first of list) {
+      const firstKey = `${key(first.from)}>${key(first.to)}`;
+      if (visited.has(firstKey)) continue;
+      let current = first;
+      const points: PlanPoint[] = [];
+      const traversed: string[] = [];
+      while (traversed.length <= items.length * 2) {
+        const edgeKey = `${key(current.from)}>${key(current.to)}`;
+        if (traversed.includes(edgeKey)) break;
+        traversed.push(edgeKey);
+        points.push(current.from);
+        const outgoing = edges.get(key(current.to));
+        if (!outgoing) break;
+        const reverse = outgoing.findIndex(
+          (edge) => key(edge.to) === key(current.from),
+        );
+        if (reverse < 0) break;
+        current = outgoing[(reverse - 1 + outgoing.length) % outgoing.length];
+        if (`${key(current.from)}>${key(current.to)}` === firstKey) {
+          traversed.forEach((entry) => visited.add(entry));
+          const twiceArea = points.reduce((sum, point, index) => {
+            const next = points[(index + 1) % points.length];
+            return sum + point.x * next.z - next.x * point.z;
+          }, 0);
+          if (twiceArea > 0.1) {
+            rooms.push({
+              points,
+              area: twiceArea / 2,
+              center: {
+                x:
+                  points.reduce((sum, point) => sum + point.x, 0) /
+                  points.length,
+                z:
+                  points.reduce((sum, point) => sum + point.z, 0) /
+                  points.length,
+              },
+            });
+          }
+          break;
+        }
+      }
+    }
+  }
+  return rooms;
+}
+
+export function floorplanSVG(scene: SetScene): string {
+  const walls = scene.items.filter(
+    (item) => item.kind === "wall" && !item.hidden,
+  );
+  const points = walls.flatMap(wallEndpoints);
+  if (points.length === 0) return "";
+  const scale = 70;
+  const minX = Math.min(...points.map((point) => point.x)) - 1;
+  const maxX = Math.max(...points.map((point) => point.x)) + 1;
+  const minZ = Math.min(...points.map((point) => point.z)) - 1;
+  const maxZ = Math.max(...points.map((point) => point.z)) + 1;
+  const width = Math.ceil((maxX - minX) * scale);
+  const height = Math.ceil((maxZ - minZ) * scale + 100);
+  const x = (value: number) => ((value - minX) * scale).toFixed(1);
+  const y = (value: number) => ((value - minZ) * scale + 70).toFixed(1);
+  const escape = (value: string) =>
+    value.replace(
+      /[&<>"']/g,
+      (char) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&apos;",
+        })[char]!,
+    );
+  const rooms = planRooms(scene.items).map(
+    (room, index) =>
+      `<polygon points="${room.points.map((point) => `${x(point.x)},${y(point.z)}`).join(" ")}" fill="#eee6d8" stroke="none"/>` +
+      `<text x="${x(room.center.x)}" y="${y(room.center.z)}" text-anchor="middle" fill="#7b6d59" font-size="14">Room ${index + 1} · ${room.area.toFixed(1)} m²</text>`,
+  );
+  const wallShapes = walls.map((wall) => {
+    const [a, b] = wallEndpoints(wall);
+    const line = `<line x1="${x(a.x)}" y1="${y(a.z)}" x2="${x(b.x)}" y2="${y(b.z)}" stroke="#34332f" stroke-width="${Math.max(4, wall.depth * scale).toFixed(1)}" stroke-linecap="square"/>`;
+    const midpoint = `<text x="${x(wall.x)}" y="${(Number(y(wall.z)) - 10).toFixed(1)}" text-anchor="middle" fill="#4b4840" font-size="11">${wall.width.toFixed(2)} m</text>`;
+    if (!wall.opening) return line + midpoint;
+    const direction = {
+      x: (b.x - a.x) / wall.width,
+      z: (b.z - a.z) / wall.width,
+    };
+    const centerDistance = wall.width / 2 + wall.opening.offset;
+    const center = {
+      x: a.x + direction.x * centerDistance,
+      z: a.z + direction.z * centerDistance,
+    };
+    const half = wall.opening.width / 2;
+    const start = {
+      x: center.x - direction.x * half,
+      z: center.z - direction.z * half,
+    };
+    const end = {
+      x: center.x + direction.x * half,
+      z: center.z + direction.z * half,
+    };
+    const gap = `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(end.x)}" y2="${y(end.z)}" stroke="#eee6d8" stroke-width="${Math.max(6, wall.depth * scale + 2).toFixed(1)}"/>`;
+    const mark =
+      wall.opening.type === "window"
+        ? `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(end.x)}" y2="${y(end.z)}" stroke="#5490a3" stroke-width="3"/>`
+        : wall.opening.width > 1.6
+          ? ""
+          : `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(start.x - direction.z * wall.opening.width)}" y2="${y(start.z + direction.x * wall.opening.width)}" stroke="#a97246" stroke-width="2"/>`;
+    return line + gap + mark + midpoint;
+  });
+  const symbols = scene.items
+    .filter(
+      (item) =>
+        !item.hidden &&
+        ["actor", "camera", "light", "power"].includes(item.kind),
+    )
+    .map((item) => {
+      const color = {
+        actor: "#b16d41",
+        camera: "#364d55",
+        light: "#d49a35",
+        power: "#6b5d9f",
+      }[item.kind as "actor" | "camera" | "light" | "power"];
+      return `<circle cx="${x(item.x)}" cy="${y(item.z)}" r="8" fill="${color}"/><text x="${x(item.x)}" y="${(Number(y(item.z)) - 12).toFixed(1)}" text-anchor="middle" fill="#35332e" font-size="10">${escape(item.name)}</text>`;
+    });
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#f9f6ef"/><text x="30" y="36" fill="#302c28" font-family="sans-serif" font-size="22" font-weight="700">${escape(scene.name)}</text><g font-family="sans-serif">${rooms.join("")}${wallShapes.join("")}${symbols.join("")}</g><line x1="30" y1="${height - 35}" x2="100" y2="${height - 35}" stroke="#302c28" stroke-width="3"/><text x="30" y="${height - 43}" font-family="sans-serif" fill="#302c28" font-size="12">1 m</text></svg>`;
+}

@@ -16,6 +16,8 @@ import {
   wallEndpoints,
 } from "./model";
 import { actorActionPose } from "./actorActions";
+import { planRooms } from "./floorplan";
+import type { PlanPoint } from "./floorplan";
 import SetPiece from "./SetPieces";
 import Mannequin from "./Mannequin";
 import type { MannequinJoints, SceneItem, SetScene, Shot } from "./model";
@@ -51,12 +53,52 @@ function surfaceTexture(ground: "grass" | "asphalt" | "sand") {
   return texture;
 }
 
+function PlanLabel({
+  text,
+  x,
+  z,
+  color = "#342f29",
+}: {
+  text: string;
+  x: number;
+  z: number;
+  color?: string;
+}) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 96;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#fff9e8";
+    context.fillRect(0, 0, 512, 96);
+    context.fillStyle = color;
+    context.font = "600 43px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(text, 256, 48);
+    const result = new THREE.CanvasTexture(canvas);
+    result.colorSpace = THREE.SRGBColorSpace;
+    return result;
+  }, [text, color]);
+  useEffect(() => () => texture.dispose(), [texture]);
+  return (
+    <mesh
+      position={[x, 0.17, z]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      raycast={() => null}
+    >
+      <planeGeometry args={[Math.max(0.75, text.length * 0.115), 0.28]} />
+      <meshBasicMaterial map={texture} transparent depthTest={false} />
+    </mesh>
+  );
+}
+
 interface Props {
   scene: SetScene;
   shot?: Shot;
   selectedId?: string;
   mode: ViewMode;
-  tool: "select" | "wall";
+  tool: "select" | "wall" | "room" | "corner" | "calibrate";
   poseMode: boolean;
   onSelect: (id?: string) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
@@ -65,6 +107,10 @@ interface Props {
     start: { x: number; z: number },
     end: { x: number; z: number },
   ) => void;
+  onAddRoom: (start: PlanPoint, end: PlanPoint) => void;
+  onMoveCorner: (from: PlanPoint, to: PlanPoint) => void;
+  calibrationPoints: PlanPoint[];
+  onCalibrationPoint: (point: PlanPoint) => void;
   captureRef: React.MutableRefObject<(() => string) | null>;
   moveProgress: number;
 }
@@ -243,6 +289,10 @@ function StageContent({
   onMove,
   onPoseJoints,
   onAddWall,
+  onAddRoom,
+  onMoveCorner,
+  calibrationPoints,
+  onCalibrationPoint,
   moveProgress,
 }: Omit<Props, "captureRef">) {
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
@@ -296,7 +346,35 @@ function StageContent({
     start: { x: number; z: number };
     end: { x: number; z: number };
   } | null>(null);
+  const [roomDraft, setRoomDraft] = useState<{
+    start: PlanPoint;
+    end: PlanPoint;
+  } | null>(null);
+  const [cornerDraft, setCornerDraft] = useState<{
+    from: PlanPoint;
+    to: PlanPoint;
+  } | null>(null);
   const snap = (point: THREE.Vector3) => snapWallPoint(point, scene.items);
+  const pointOnGround = (event: ThreeEvent<PointerEvent>) => {
+    const point = new THREE.Vector3();
+    event.ray.intersectPlane(
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+      point,
+    );
+    return snap(point);
+  };
+  const rooms = useMemo(() => planRooms(scene.items), [scene.items]);
+  const corners = useMemo(() => {
+    const values = scene.items
+      .filter((item) => item.kind === "wall" && !item.hidden && !item.locked)
+      .flatMap(wallEndpoints);
+    return values.filter(
+      (point, index) =>
+        values.findIndex(
+          (other) => Math.hypot(other.x - point.x, other.z - point.z) < 0.01,
+        ) === index,
+    );
+  }, [scene.items]);
   const floorplanPlacement = scene.floorplanPlacement ?? {
     x: 0,
     z: 0,
@@ -348,7 +426,7 @@ function StageContent({
           Math.cos(sunAzimuth) * Math.cos(sunElevation) * 15,
         ]}
         intensity={0.2 + daylight * 1.8}
-        castShadow
+        castShadow={mode !== "plan"}
         shadow-mapSize={[1024, 1024]}
       />
       {scene.items
@@ -400,28 +478,41 @@ function StageContent({
         receiveShadow
         onPointerDown={(event) => {
           if (poseMode) return;
-          if (tool === "wall" && mode === "plan") {
+          if (tool === "calibrate" && mode === "plan") {
+            event.stopPropagation();
+            onCalibrationPoint({ x: event.point.x, z: event.point.z });
+            return;
+          }
+          if ((tool === "wall" || tool === "room") && mode === "plan") {
             event.stopPropagation();
             (event.target as Element).setPointerCapture(event.pointerId);
             const start = snap(event.point);
-            setWallDraft({ start, end: start });
+            if (tool === "wall") setWallDraft({ start, end: start });
+            else setRoomDraft({ start, end: start });
           } else onSelect(undefined);
         }}
         onPointerMove={(event) => {
           if (wallDraft) setWallDraft({ ...wallDraft, end: snap(event.point) });
+          if (roomDraft) setRoomDraft({ ...roomDraft, end: snap(event.point) });
         }}
         onPointerUp={(event) => {
-          if (!wallDraft) return;
+          if (!wallDraft && !roomDraft) return;
           (event.target as Element).releasePointerCapture(event.pointerId);
           const end = snap(event.point);
           if (
+            wallDraft &&
             Math.hypot(end.x - wallDraft.start.x, end.z - wallDraft.start.z) >=
-            0.25
+              0.25
           )
             onAddWall(wallDraft.start, end);
+          if (roomDraft) onAddRoom(roomDraft.start, end);
           setWallDraft(null);
+          setRoomDraft(null);
         }}
-        onPointerCancel={() => setWallDraft(null)}
+        onPointerCancel={() => {
+          setWallDraft(null);
+          setRoomDraft(null);
+        }}
       >
         <planeGeometry args={[100, 100]} />
         <meshStandardMaterial
@@ -430,31 +521,72 @@ function StageContent({
           roughness={1}
         />
       </mesh>
-      {roomFloor && (
-        <group position={[roomFloor.x, 0.006, roomFloor.z]}>
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            receiveShadow
-            raycast={() => null}
-          >
-            <planeGeometry args={[roomFloor.width, roomFloor.depth]} />
-            <meshStandardMaterial color="#b6aa92" roughness={0.96} />
-          </mesh>
-          {Array.from(
-            { length: Math.floor(roomFloor.depth / 0.38) },
-            (_, index) => (
+      {rooms.length > 0
+        ? rooms.map((room, index) => {
+            const shape = new THREE.Shape();
+            room.points.forEach((point, pointIndex) => {
+              if (pointIndex === 0) shape.moveTo(point.x, -point.z);
+              else shape.lineTo(point.x, -point.z);
+            });
+            shape.closePath();
+            return (
+              <group key={`room-floor-${index}`}>
+                <mesh
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  position={[0, 0.008, 0]}
+                  receiveShadow
+                  raycast={() => null}
+                >
+                  <shapeGeometry args={[shape]} />
+                  <meshStandardMaterial
+                    color="#b6aa92"
+                    roughness={0.96}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+                {mode === "plan" && (
+                  <PlanLabel
+                    text={`Room ${index + 1} · ${room.area.toFixed(1)} m²`}
+                    x={room.center.x}
+                    z={room.center.z}
+                  />
+                )}
+              </group>
+            );
+          })
+        : roomFloor && (
+            <group position={[roomFloor.x, 0.006, roomFloor.z]}>
               <mesh
-                key={index}
-                position={[0, 0.001, -roomFloor.depth / 2 + (index + 1) * 0.38]}
+                rotation={[-Math.PI / 2, 0, 0]}
+                receiveShadow
                 raycast={() => null}
               >
-                <boxGeometry args={[roomFloor.width, 0.002, 0.006]} />
-                <meshBasicMaterial color="#968b76" transparent opacity={0.4} />
+                <planeGeometry args={[roomFloor.width, roomFloor.depth]} />
+                <meshStandardMaterial color="#b6aa92" roughness={0.96} />
               </mesh>
-            ),
+              {Array.from(
+                { length: Math.floor(roomFloor.depth / 0.38) },
+                (_, index) => (
+                  <mesh
+                    key={index}
+                    position={[
+                      0,
+                      0.001,
+                      -roomFloor.depth / 2 + (index + 1) * 0.38,
+                    ]}
+                    raycast={() => null}
+                  >
+                    <boxGeometry args={[roomFloor.width, 0.002, 0.006]} />
+                    <meshBasicMaterial
+                      color="#968b76"
+                      transparent
+                      opacity={0.4}
+                    />
+                  </mesh>
+                ),
+              )}
+            </group>
           )}
-        </group>
-      )}
       {wallDraft && (
         <mesh
           position={[
@@ -487,12 +619,108 @@ function StageContent({
           <meshBasicMaterial color="#eb8950" transparent opacity={0.5} />
         </mesh>
       )}
+      {roomDraft && (
+        <Line
+          points={[
+            [roomDraft.start.x, 0.12, roomDraft.start.z],
+            [roomDraft.end.x, 0.12, roomDraft.start.z],
+            [roomDraft.end.x, 0.12, roomDraft.end.z],
+            [roomDraft.start.x, 0.12, roomDraft.end.z],
+            [roomDraft.start.x, 0.12, roomDraft.start.z],
+          ]}
+          color="#eb8950"
+          lineWidth={3}
+          raycast={() => null}
+        />
+      )}
+      {mode === "plan" &&
+        tool === "corner" &&
+        corners.map((point) => (
+          <mesh
+            key={`${point.x}-${point.z}`}
+            position={[
+              cornerDraft &&
+              Math.hypot(
+                cornerDraft.from.x - point.x,
+                cornerDraft.from.z - point.z,
+              ) < 0.01
+                ? cornerDraft.to.x
+                : point.x,
+              0.2,
+              cornerDraft &&
+              Math.hypot(
+                cornerDraft.from.x - point.x,
+                cornerDraft.from.z - point.z,
+              ) < 0.01
+                ? cornerDraft.to.z
+                : point.z,
+            ]}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              (event.target as Element).setPointerCapture(event.pointerId);
+              setCornerDraft({ from: point, to: point });
+            }}
+            onPointerMove={(event) => {
+              if (
+                cornerDraft &&
+                Math.hypot(
+                  cornerDraft.from.x - point.x,
+                  cornerDraft.from.z - point.z,
+                ) < 0.01
+              ) {
+                event.stopPropagation();
+                setCornerDraft({ ...cornerDraft, to: pointOnGround(event) });
+              }
+            }}
+            onPointerUp={(event) => {
+              if (!cornerDraft) return;
+              event.stopPropagation();
+              (event.target as Element).releasePointerCapture(event.pointerId);
+              onMoveCorner(cornerDraft.from, pointOnGround(event));
+              setCornerDraft(null);
+            }}
+            onPointerCancel={() => setCornerDraft(null)}
+          >
+            <sphereGeometry args={[0.13, 12, 8]} />
+            <meshBasicMaterial color="#ee8f46" depthTest={false} />
+          </mesh>
+        ))}
+      {mode === "plan" &&
+        scene.items
+          .filter((item) => item.kind === "wall" && !item.hidden)
+          .map((wall) => (
+            <PlanLabel
+              key={`length-${wall.id}`}
+              text={`${wall.width.toFixed(2)} m`}
+              x={wall.x}
+              z={wall.z}
+            />
+          ))}
+      {mode === "plan" &&
+        calibrationPoints.map((point, index) => (
+          <mesh
+            key={index}
+            position={[point.x, 0.19, point.z]}
+            raycast={() => null}
+          >
+            <sphereGeometry args={[0.12, 12, 8]} />
+            <meshBasicMaterial color="#e76b36" depthTest={false} />
+          </mesh>
+        ))}
+      {mode === "plan" && calibrationPoints.length === 2 && (
+        <Line
+          points={calibrationPoints.map((point) => [point.x, 0.18, point.z])}
+          color="#e76b36"
+          lineWidth={3}
+          raycast={() => null}
+        />
+      )}
       {floorTexture && (
         <group
           position={[floorplanPlacement.x, 0.012, floorplanPlacement.z]}
           rotation={[0, (floorplanPlacement.rotation * Math.PI) / 180, 0]}
         >
-          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
             <planeGeometry
               args={[floorplanPlacement.width, floorplanPlacement.height]}
             />
@@ -568,7 +796,7 @@ function StageContent({
               position={[item.x, item.y, item.z]}
               rotation={[0, (item.rotation * Math.PI) / 180, 0]}
               onPointerDown={(event) => {
-                if (tool !== "wall" && !poseMode) select(event, item.id);
+                if (tool === "select" && !poseMode) select(event, item.id);
               }}
             >
               <SetPiece
@@ -648,7 +876,7 @@ function StageContent({
       )}
       {mode !== "camera" && (
         <OrbitControls
-          enabled={tool !== "wall"}
+          enabled={tool === "select"}
           enableRotate={mode !== "plan" && !poseMode}
           enablePan={!poseMode}
           target={

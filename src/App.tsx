@@ -56,6 +56,7 @@ import {
   loadProject,
   makeItem,
   wallBetween,
+  wallEndpoints,
 } from "./model";
 import type {
   ActorPath,
@@ -73,6 +74,16 @@ import type { AspectRatio, SensorId } from "./cinematography";
 import { shotListCSV } from "./shotList";
 import { actorActions } from "./actorActions";
 import type { ActorAction } from "./actorActions";
+import {
+  floorplanSVG,
+  canSplitWall,
+  calibratedPlacement,
+  insertPlanWall,
+  moveSharedCorner,
+  planRooms,
+  rectangularRoom,
+  splitWall,
+} from "./floorplan";
 import * as THREE from "three";
 import "./App.css";
 
@@ -141,7 +152,13 @@ function App() {
   );
   const [selectedId, setSelectedId] = useState<string>();
   const [mode, setMode] = useState<ViewMode>("stage");
-  const [tool, setTool] = useState<"select" | "wall">("select");
+  const [tool, setTool] = useState<
+    "select" | "wall" | "room" | "corner" | "calibrate"
+  >("select");
+  const [calibrationPoints, setCalibrationPoints] = useState<
+    { x: number; z: number }[]
+  >([]);
+  const [calibrationMeters, setCalibrationMeters] = useState(3);
   const [poseMode, setPoseMode] = useState(false);
   const [actionSearch, setActionSearch] = useState("");
   const [order, setOrder] = useState<"story" | "shoot">("story");
@@ -178,6 +195,7 @@ function App() {
     [scene, shot],
   );
   const selected = stageScene.items.find((value) => value.id === selectedId);
+  const planRoomList = useMemo(() => planRooms(scene.items), [scene.items]);
   const selectedPowerSource = scene.items.find(
     (item) => item.id === selected?.powerSourceId,
   );
@@ -441,8 +459,31 @@ function App() {
       end,
       scene.items.filter((item) => item.kind === "wall").length + 1,
     );
-    updateScene((current) => ({ ...current, items: [...current.items, wall] }));
+    updateScene((current) => ({
+      ...current,
+      items: insertPlanWall(current.items, wall),
+    }));
     setSelectedId(wall.id);
+  }
+
+  function addRoom(
+    start: { x: number; z: number },
+    end: { x: number; z: number },
+  ) {
+    updateScene((current) => ({
+      ...current,
+      items: rectangularRoom(current.items, start, end),
+    }));
+  }
+
+  function moveCorner(
+    from: { x: number; z: number },
+    to: { x: number; z: number },
+  ) {
+    updateScene((current) => ({
+      ...current,
+      items: moveSharedCorner(current.items, from, to),
+    }));
   }
 
   function duplicateSelected() {
@@ -711,6 +752,7 @@ function App() {
       if (!isProject(value)) throw new Error("Unsupported project");
       dispatch({ type: "replace", project: value });
       setSceneId(value.scenes[0].id);
+      setCalibrationPoints([]);
       setShotId(value.scenes[0].shots[0]?.id);
       resetMove();
       setSelectedId(undefined);
@@ -744,6 +786,7 @@ function App() {
         }));
         setShowFloorplanControls(true);
         setMode("plan");
+        setCalibrationPoints([]);
       };
       image.onerror = () => window.alert("This image could not be read.");
       image.src = source;
@@ -851,6 +894,20 @@ function App() {
         {showExport && (
           <div className="popover export-menu">
             <button
+              disabled={!scene.items.some((item) => item.kind === "wall")}
+              onClick={() => {
+                download(
+                  `${scene.name || "scene"}-floor-plan.svg`,
+                  floorplanSVG(scene),
+                  "image/svg+xml;charset=utf-8",
+                );
+                setShowExport(false);
+              }}
+            >
+              <LayoutGrid size={16} /> Floor plan SVG{" "}
+              <small>Measured vector drawing</small>
+            </button>
+            <button
               onClick={() => {
                 download(
                   `${project.name || "project"}.pettyset.json`,
@@ -938,6 +995,7 @@ function App() {
               value={scene.id}
               onChange={(event) => {
                 setSceneId(event.target.value);
+                setCalibrationPoints([]);
                 const next = project.scenes.find(
                   (value) => value.id === event.target.value,
                 );
@@ -978,6 +1036,7 @@ function App() {
                   scenes: [...current.scenes, next],
                 }));
                 setSceneId(next.id);
+                setCalibrationPoints([]);
                 setShotId(undefined);
                 resetMove();
                 setSelectedId(undefined);
@@ -994,6 +1053,7 @@ function App() {
                   scenes: [...current.scenes, next],
                 }));
                 setSceneId(next.id);
+                setCalibrationPoints([]);
                 setShotId(next.shots[0].id);
                 resetMove();
                 setSelectedId(undefined);
@@ -1011,6 +1071,7 @@ function App() {
                   scenes: [...current.scenes, next],
                 }));
                 setSceneId(next.id);
+                setCalibrationPoints([]);
                 setShotId(next.shots[0].id);
                 resetMove();
                 setSelectedId(undefined);
@@ -1028,6 +1089,7 @@ function App() {
                   scenes: [...current.scenes, next],
                 }));
                 setSceneId(next.id);
+                setCalibrationPoints([]);
                 setShotId(next.shots[0].id);
                 resetMove();
                 setSelectedId(undefined);
@@ -1100,6 +1162,32 @@ function App() {
               />
             </label>
           </div>
+          <div className="plan-summary">
+            <h3>Floor plan</h3>
+            <div>
+              <span>Enclosed rooms</span>
+              <strong>{planRoomList.length}</strong>
+            </div>
+            <div>
+              <span>Usable floor area</span>
+              <strong>
+                {planRoomList
+                  .reduce((sum, room) => sum + room.area, 0)
+                  .toFixed(1)}{" "}
+                m²
+              </strong>
+            </div>
+            <div>
+              <span>Wall length</span>
+              <strong>
+                {scene.items
+                  .filter((item) => item.kind === "wall")
+                  .reduce((sum, wall) => sum + wall.width, 0)
+                  .toFixed(1)}{" "}
+                m
+              </strong>
+            </div>
+          </div>
           <div className="section-title">
             <span>
               SET OBJECTS <b>{scene.items.length}</b>
@@ -1166,6 +1254,16 @@ function App() {
                   <Ruler size={15} /> Scale
                 </button>
                 <button
+                  onClick={() => {
+                    setTool("calibrate");
+                    setMode("plan");
+                    setCalibrationPoints([]);
+                    setShowFloorplanControls(true);
+                  }}
+                >
+                  <Ruler size={15} /> Calibrate from two points
+                </button>
+                <button
                   className="remove-plan"
                   onClick={() => {
                     updateScene((current) => ({
@@ -1174,6 +1272,8 @@ function App() {
                       floorplanPlacement: undefined,
                     }));
                     setShowFloorplanControls(false);
+                    setCalibrationPoints([]);
+                    setTool("select");
                   }}
                 >
                   Remove
@@ -1185,6 +1285,53 @@ function App() {
             <div className="floorplan-controls">
               <h3>Floor plan placement</h3>
               <p>Match width and height to known dimensions in meters.</p>
+              {tool === "calibrate" && (
+                <div className="calibration-fields">
+                  <p>
+                    Click two points on the imported plan, then enter their real
+                    distance.
+                  </p>
+                  <span>{calibrationPoints.length} of 2 points set</span>
+                  <label>
+                    <span>Known distance · m</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.1"
+                      value={calibrationMeters}
+                      onChange={(event) =>
+                        setCalibrationMeters(Number(event.target.value))
+                      }
+                    />
+                  </label>
+                  <button
+                    disabled={
+                      calibrationPoints.length !== 2 || calibrationMeters <= 0
+                    }
+                    onClick={() => {
+                      updateFloorplanPlacement(
+                        calibratedPlacement(
+                          scene.floorplanPlacement ?? {
+                            x: 0,
+                            z: 0,
+                            width: 10,
+                            height: 10,
+                            rotation: 0,
+                            opacity: 0.65,
+                          },
+                          calibrationPoints[0],
+                          calibrationPoints[1],
+                          calibrationMeters,
+                        ),
+                      );
+                      setCalibrationPoints([]);
+                      setTool("select");
+                    }}
+                  >
+                    Apply scale
+                  </button>
+                </div>
+              )}
               <div className="floorplan-field-grid">
                 {(["width", "height", "x", "z", "rotation"] as const).map(
                   (key) => (
@@ -1293,6 +1440,30 @@ function App() {
               >
                 <PenLine size={15} /> Draw wall
               </button>
+              <button
+                className={tool === "room" ? "active" : ""}
+                aria-label="Draw room"
+                title="Drag out a rectangular room in plan view"
+                onClick={() => {
+                  setTool("room");
+                  setMode("plan");
+                  setSelectedId(undefined);
+                }}
+              >
+                <Square size={15} /> Room
+              </button>
+              <button
+                className={tool === "corner" ? "active" : ""}
+                aria-label="Edit corners"
+                title="Drag a shared wall corner in plan view"
+                onClick={() => {
+                  setTool("corner");
+                  setMode("plan");
+                  setSelectedId(undefined);
+                }}
+              >
+                <Ruler size={15} /> Corners
+              </button>
               {selected?.kind === "actor" &&
                 !selected.locked &&
                 mode === "stage" && (
@@ -1344,6 +1515,14 @@ function App() {
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
               onPoseJoints={updateActorJoints}
               onAddWall={addWall}
+              onAddRoom={addRoom}
+              onMoveCorner={moveCorner}
+              calibrationPoints={calibrationPoints}
+              onCalibrationPoint={(point) =>
+                setCalibrationPoints((current) =>
+                  current.length >= 2 ? [point] : [...current, point],
+                )
+              }
               captureRef={captureRef}
               moveProgress={moveProgress}
             />
@@ -1427,9 +1606,15 @@ function App() {
                 ? "Drag amber joints · head and shoulders move in two directions · scroll to zoom"
                 : tool === "wall" && mode === "plan"
                   ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
-                  : mode === "camera"
-                    ? "Shot preview · select 3D stage to edit"
-                    : "Click an object to select · drag the arrows to move · scroll to zoom"}
+                  : tool === "room" && mode === "plan"
+                    ? "Drag two opposite corners to draw a measured room"
+                    : tool === "corner" && mode === "plan"
+                      ? "Drag an amber corner to reshape connected walls"
+                      : tool === "calibrate" && mode === "plan"
+                        ? "Click two points on the imported plan, then enter their known distance"
+                        : mode === "camera"
+                          ? "Shot preview · select 3D stage to edit"
+                          : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
             {(mode === "camera" || (mode === "stage" && hasMotion)) && (
               <div className="camera-actions">
@@ -2067,6 +2252,49 @@ function App() {
                         </div>
                       </>
                     )}
+                  </div>
+                )}
+                {selected.kind === "wall" && (
+                  <div className="field-section">
+                    <h3>Wall geometry</h3>
+                    <p className="field-note">
+                      Edit an endpoint to move every connected wall corner.
+                    </p>
+                    {wallEndpoints(selected).map((point, index) => (
+                      <div className="field-grid" key={index}>
+                        {(["x", "z"] as const).map((axis) => (
+                          <label key={axis}>
+                            <span>
+                              {index === 0 ? "Start" : "End"}{" "}
+                              {axis.toUpperCase()} m
+                            </span>
+                            <input
+                              type="number"
+                              step="0.25"
+                              value={Number(point[axis].toFixed(2))}
+                              onChange={(event) =>
+                                moveCorner(point, {
+                                  ...point,
+                                  [axis]: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={!canSplitWall(selected)}
+                      onClick={() =>
+                        updateScene((current) => ({
+                          ...current,
+                          items: splitWall(current.items, selected.id),
+                        }))
+                      }
+                    >
+                      <Plus size={15} /> Split wall at center
+                    </button>
                   </div>
                 )}
                 {selected.kind === "wall" && (

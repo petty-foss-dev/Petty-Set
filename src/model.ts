@@ -777,6 +777,39 @@ export function snapWallPoint(
       : best;
   }, undefined);
   if (nearest && nearest.distance <= tolerance) return nearest.point;
+  const nearestEdge = items
+    .filter((item) => item.kind === "wall" && !item.hidden)
+    .reduce<{ point: { x: number; z: number }; distance: number } | undefined>(
+      (best, wall) => {
+        const [start, end] = wallEndpoints(wall);
+        const dx = end.x - start.x;
+        const dz = end.z - start.z;
+        const t = Math.max(
+          0,
+          Math.min(
+            1,
+            ((point.x - start.x) * dx + (point.z - start.z) * dz) /
+              (dx * dx + dz * dz),
+          ),
+        );
+        const snappedDistance = Math.round(t * wall.width * 4) / 4;
+        const fraction = snappedDistance / wall.width;
+        const projected = {
+          x: start.x + fraction * dx,
+          z: start.z + fraction * dz,
+        };
+        const distance = Math.hypot(
+          projected.x - point.x,
+          projected.z - point.z,
+        );
+        return !best || distance < best.distance
+          ? { point: projected, distance }
+          : best;
+      },
+      undefined,
+    );
+  if (nearestEdge && nearestEdge.distance <= tolerance)
+    return nearestEdge.point;
   return {
     x: Math.round(point.x * 4) / 4,
     z: Math.round(point.z * 4) / 4,
@@ -861,9 +894,16 @@ export function furnishedScene(): SetScene {
     {
       ...makeItem("wall", 4),
       name: "Front return",
-      x: -2.65,
+      x: 0,
       z: 2.6,
-      width: 2.7,
+      width: 8,
+      opening: {
+        type: "door" as const,
+        offset: 1.35,
+        width: 5.3,
+        height: 2.6,
+        sill: 0,
+      },
     },
     {
       ...makeItem("rug", 1),

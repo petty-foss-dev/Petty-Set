@@ -13,6 +13,12 @@ Open the address printed by Vite. The app stores the current project in this bro
 
 ## Preview
 
+![Measured two-room floor plan with wall dimensions](docs/screenshots/measured-floor-plan.jpg)
+
+![Interior partition divides a room into two measured spaces](docs/screenshots/partitioned-floor-plan.jpg)
+
+[Open the editable sample floor plan SVG](docs/examples/furnished-floor-plan.svg)
+
 ![Two-room set with cameras, lights, and a power source](docs/screenshots/two-room-set.jpg)
 
 ![Camera A 50 mm two-shot](docs/screenshots/camera-a-two-shot.jpg)
@@ -36,7 +42,7 @@ Open the address printed by Vite. The app stores the current project in this bro
 ## Current features
 
 - One film with multiple scenes; each scene has a separate editable 3D set.
-- Draw walls on a quarter-meter grid with endpoint snapping, add framed doorways and windows, and position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden drawing mannequins with visible joints and neutral, greeting, or pointing poses, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
+- Draw walls on a quarter-meter grid with endpoint and edge snapping, drag out rectangular rooms, move shared corners, split walls, and add framed doorways and windows. Interior partitions split wall intersections and divide measured rooms. Closed outlines form individual 3D floors; plan view labels wall lengths and room areas. Position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden drawing mannequins with visible joints and neutral, greeting, or pointing poses, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
 - Add a furnished sample scene with connected rooms, two camera setups, actor actions, and a lighting power source without replacing the current scene. All sample objects remain editable.
 - Build an outdoor scene with grass, asphalt, sand, or studio ground; set sky color and sun direction/elevation; add original trees, park benches, vehicles, and paved ground patches. An exterior sample scene demonstrates the catalog.
 - Dress a stylized backlot street with editable storefront, brick, and theater facades, custom sign text, detailed streetlamps and barrels, road markings, scored sidewalks, curbs, and wooden actors. The Main Street sample includes an actor route, a greeting pose, and a camera shot. The editor uses a warm studio palette inspired by classic movie-making games; all scene geometry and styling are original.
@@ -47,12 +53,12 @@ Open the address printed by Vite. The app stores the current project in this bro
 - Undo and redo project edits; duplicate, hide, and lock set objects.
 - Set actor positions, facing, and twelve mannequin joint angles per shot, then add an end mark and waypoints for each actor. Start from neutral, greeting, or pointing and fine tune the head, shoulders, elbows, hips, and knees with inspector sliders or by dragging amber joint handles in the 3D stage. Preview actor movement with the shot timeline in stage, plan, or camera view; the mannequin shows a simple walk swing during playback.
 - Search a small library of original procedural actor actions, assign an action per shot, and control its loop and speed. Actions can play while actors hold their marks.
-- Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity.
+- Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity, or calibrate its scale by clicking two points with a known real-world distance.
 - Switch between orbiting 3D stage, top plan, and camera view.
 - Add shots with separate cameras; choose a sensor gate, focal length, aperture, focus distance, and shot aspect ratio. The camera view shows framing guides and approximate depth-of-field limits, with controls to switch directly between camera setups.
 - Arrange story and shoot order independently and export a shot-list CSV in either order.
 - Capture camera frames into the storyboard; edit shot notes and duration.
-- Export editable JSON, view PNG, and storyboard PDF.
+- Export editable JSON, measured floor plan SVG, view PNG, and storyboard PDF.
 
 ## Parity roadmap
 
@@ -60,7 +66,7 @@ See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and 
 
 This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
 
-1. Modeling tools: connected wall corners, room scale controls, broader snapping, grouping, and a larger original asset catalog.
+1. Modeling tools: irregular room drawing, collinear wall overlap handling, multiple openings per segment, room finishes, grouping, and a larger original asset catalog.
 2. Cinematography: named camera bodies and lenses, visual depth of field, curved camera paths, collision-aware movement, and take variants.
 3. Performance planning: inverse kinematics, a saved pose library, rigged animation assets, route timing/easing and collision checks, more lighting modifiers, editable cable routes, and alternate plans.
 4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.

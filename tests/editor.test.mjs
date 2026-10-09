@@ -17,6 +17,110 @@ import {
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
 import { actorActionPose } from "../src/actorActions.ts";
+import {
+  floorplanSVG,
+  canSplitWall,
+  calibratedPlacement,
+  insertPlanWall,
+  moveSharedCorner,
+  planRooms,
+  rectangularRoom,
+  splitWall,
+} from "../src/floorplan.ts";
+
+test("rectangular rooms share walls and report enclosed floor area", () => {
+  const first = rectangularRoom([], { x: 0, z: 0 }, { x: 4, z: 3 });
+  assert.equal(first.length, 4);
+  assert.equal(planRooms(first)[0].area, 12);
+  const adjacent = rectangularRoom(first, { x: 4, z: 0 }, { x: 7, z: 3 });
+  assert.equal(adjacent.length, 7);
+  assert.deepEqual(
+    planRooms(adjacent)
+      .map((room) => room.area)
+      .sort((a, b) => a - b),
+    [9, 12],
+  );
+  const moved = moveSharedCorner(first, { x: 0, z: 0 }, { x: -1, z: 0 });
+  assert.equal(
+    moved.filter((wall, index) => wall.width !== first[index].width).length,
+    2,
+  );
+  assert.equal(planRooms(moved)[0].area, 13.5);
+});
+
+test("floor plan export includes room area, openings and scale", () => {
+  const scene = sampleProject().scenes[0];
+  assert.deepEqual(
+    planRooms(scene.items)
+      .map((room) => room.area)
+      .sort((a, b) => a - b),
+    [19.2, 48],
+  );
+  const svg = floorplanSVG(scene);
+  assert.match(svg, /Room 1 · 48\.0 m²/);
+  assert.match(svg, /1 m<\/text>/);
+  assert.match(svg, /stroke="#5490a3"/);
+});
+
+test("two-point calibration scales an imported plan uniformly", () => {
+  const placement = {
+    x: 0,
+    z: 0,
+    width: 10,
+    height: 6,
+    rotation: 0,
+    opacity: 0.6,
+  };
+  const calibrated = calibratedPlacement(
+    placement,
+    { x: 1, z: 1 },
+    { x: 3, z: 1 },
+    5,
+  );
+  assert.equal(calibrated.width, 25);
+  assert.equal(calibrated.height, 15);
+  assert.equal(calibrated.opacity, 0.6);
+  assert.equal(
+    calibratedPlacement(placement, { x: 1, z: 1 }, { x: 1, z: 1 }, 5),
+    placement,
+  );
+});
+
+test("splitting a wall preserves an offset opening and room area", () => {
+  const items = rectangularRoom([], { x: 0, z: 0 }, { x: 6, z: 4 });
+  const wall = {
+    ...items[0],
+    opening: { type: "window", offset: -1.5, width: 1, height: 1, sill: 1 },
+  };
+  const sceneItems = [wall, ...items.slice(1)];
+  assert.equal(canSplitWall(wall), true);
+  const split = splitWall(sceneItems, wall.id);
+  assert.equal(split.length, 5);
+  assert.equal(split[0].opening.offset, 0);
+  assert.equal(split[1].opening, undefined);
+  assert.equal(planRooms(split)[0].area, 24);
+  assert.equal(
+    canSplitWall({ ...wall, opening: { ...wall.opening, offset: 0 } }),
+    false,
+  );
+});
+
+test("interior partitions split wall intersections into measured rooms", () => {
+  const perimeter = rectangularRoom([], { x: 0, z: 0 }, { x: 4, z: 3 });
+  assert.deepEqual(snapWallPoint({ x: 2.1, z: 0.2 }, perimeter), {
+    x: 2,
+    z: 0,
+  });
+  const partition = wallBetween({ x: 2, z: 0 }, { x: 2, z: 3 }, 5);
+  const items = insertPlanWall(perimeter, partition);
+  assert.equal(items.length, 7);
+  assert.deepEqual(
+    planRooms(items)
+      .map((room) => room.area)
+      .sort((a, b) => a - b),
+    [6, 6],
+  );
+});
 
 test("undo restores a deleted shot and redo removes it again", () => {
   const project = sampleProject();

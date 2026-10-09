@@ -216,7 +216,7 @@ function Wall({ item }: { item: SceneItem }) {
           />
         </group>
       )}
-      {o.type === "door" && (
+      {o.type === "door" && ow <= 1.6 && (
         <group rotation={[0, -0.55, 0]} position={[left, 0, 0]}>
           <Box
             position={[ow / 2 - 0.04, oh / 2, 0]}
