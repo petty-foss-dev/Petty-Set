@@ -333,6 +333,16 @@ test("shot references survive project import validation", () => {
   assert.equal(isProject(invalid), false);
 });
 
+test("shot planning status and setup validate without breaking older projects", () => {
+  const project = sampleProject();
+  assert.equal(isProject(project), true);
+  delete project.scenes[0].shots[0].status;
+  delete project.scenes[0].shots[0].setup;
+  assert.equal(isProject(project), true);
+  project.scenes[0].shots[0].status = "complete";
+  assert.equal(isProject(project), false);
+});
+
 test("furnished set connects two camera setups, actor actions, and power", () => {
   const project = sampleProject();
   const scene = project.scenes[0];
@@ -414,6 +424,8 @@ test("shot list CSV preserves order and escapes production notes", () => {
   scene.shots[0].notes = 'Move to "door", then hold\nfor cue';
   const csv = shotListCSV(scene, scene.shots);
   assert.ok(csv.startsWith("\uFEFF"));
+  assert.ok(csv.includes('"Setup","Status"'));
+  assert.ok(csv.includes('"Living room A","ready"'));
   assert.ok(csv.includes('"Move to ""door"", then hold\nfor cue"'));
   assert.ok(csv.includes('"Super 35","50","2.8","5.5","16:9"'));
 });

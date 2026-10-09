@@ -182,6 +182,7 @@ function App() {
   const [poseMode, setPoseMode] = useState(false);
   const [actionSearch, setActionSearch] = useState("");
   const [order, setOrder] = useState<"story" | "shoot">("story");
+  const [shotView, setShotView] = useState<"boards" | "list">("boards");
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showFloorplanControls, setShowFloorplanControls] = useState(false);
@@ -244,6 +245,16 @@ function App() {
   const activeShotIndex = orderedShots.findIndex(
     (entry) => entry.id === shot?.id,
   );
+  const finishedShots = scene.shots.filter(
+    (entry) => entry.status === "shot",
+  ).length;
+  const setupNames = [
+    ...new Set(
+      scene.shots
+        .map((entry) => entry.setup?.trim())
+        .filter((value): value is string => !!value),
+    ),
+  ];
   const hasMotion =
     !!shot?.cameraEnd ||
     !!Object.keys(shot?.actorPaths ?? {}).length ||
@@ -607,6 +618,8 @@ function App() {
       title: `Shot ${scene.shots.length + 1}`,
       cameraId: camera.id,
       notes: "",
+      setup: shot?.setup,
+      status: "planned",
       duration: 5,
       aspectRatio: shot?.aspectRatio ?? "16:9",
       actorMarks: Object.fromEntries(
@@ -654,6 +667,15 @@ function App() {
       ...current,
       shots: current.shots.map((value) =>
         value.id === shot.id ? { ...value, ...patch } : value,
+      ),
+    }));
+  }
+
+  function updateShotById(shotId: string, patch: Partial<Shot>) {
+    updateScene((current) => ({
+      ...current,
+      shots: current.shots.map((value) =>
+        value.id === shotId ? { ...value, ...patch } : value,
       ),
     }));
   }
@@ -783,6 +805,8 @@ function App() {
         title: reference.name.replace(/\.[^.]+$/, ""),
         cameraId: newCameras[index].id,
         notes: "",
+        setup: shot?.setup,
+        status: "planned",
         duration: 5,
         aspectRatio: shot?.aspectRatio ?? "16:9",
         reference,
@@ -832,6 +856,15 @@ function App() {
       pdf.setTextColor(26, 29, 31);
       pdf.setFontSize(17);
       pdf.text(`${index + 1}. ${entry.title}`, 12, 39);
+      pdf.setFontSize(9);
+      pdf.setTextColor(110, 78, 55);
+      pdf.text(
+        `${entry.setup || "No setup"}  /  ${(entry.status ?? "planned").toUpperCase()}`,
+        285,
+        157,
+        { align: "right" },
+      );
+      pdf.setTextColor(26, 29, 31);
       const boardImage = entry.frame ?? entry.reference?.image;
       if (boardImage) {
         const dimensions = pdf.getImageProperties(boardImage);
@@ -1796,8 +1829,25 @@ function App() {
                 <h2>
                   Shots <span>{scene.shots.length}</span>
                 </h2>
+                <p className="shot-progress">
+                  {finishedShots} of {scene.shots.length} complete
+                </p>
               </div>
               <div className="shot-controls">
+                <div className="shot-view-switch" aria-label="Sequence view">
+                  <button
+                    className={shotView === "boards" ? "active" : ""}
+                    onClick={() => setShotView("boards")}
+                  >
+                    Boards
+                  </button>
+                  <button
+                    className={shotView === "list" ? "active" : ""}
+                    onClick={() => setShotView("list")}
+                  >
+                    List
+                  </button>
+                </div>
                 <div className="order-switch">
                   <button
                     className={order === "story" ? "active" : ""}
@@ -1829,47 +1879,121 @@ function App() {
                 {referenceNotice}
               </p>
             )}
-            <div className="shot-strip">
-              {orderedShots.map((entry, index) => (
-                <button
-                  key={entry.id}
-                  className={`shot-card ${entry.id === shot?.id ? "active" : ""}`}
-                  onClick={() => activateShot(entry)}
-                >
-                  <div className="shot-thumb">
-                    {entry.frame || entry.reference ? (
-                      <img
-                        src={entry.frame ?? entry.reference?.image}
-                        alt={
-                          entry.frame
-                            ? "Captured shot"
-                            : `Reference: ${entry.reference?.name}`
-                        }
-                      />
-                    ) : (
-                      <>
-                        <Video size={23} />
-                        <span>NO FRAME</span>
-                      </>
-                    )}
-                  </div>
-                  <div className="shot-card-meta">
-                    <b>{String(index + 1).padStart(2, "0")}</b>
-                    <span>{entry.title}</span>
-                    <small>
-                      {scene.items.find((item) => item.id === entry.cameraId)
-                        ?.focalLength ?? 35}
-                      mm
-                    </small>
-                  </div>
-                </button>
-              ))}
-              {!scene.shots.length && (
-                <p className="empty-shots">
-                  Add a shot to place a camera and start your storyboard.
-                </p>
-              )}
-            </div>
+            {shotView === "boards" ? (
+              <div className="shot-strip">
+                {orderedShots.map((entry, index) => (
+                  <button
+                    key={entry.id}
+                    className={`shot-card ${entry.id === shot?.id ? "active" : ""}`}
+                    onClick={() => activateShot(entry)}
+                  >
+                    <div className="shot-thumb">
+                      {entry.frame || entry.reference ? (
+                        <img
+                          src={entry.frame ?? entry.reference?.image}
+                          alt={
+                            entry.frame
+                              ? "Captured shot"
+                              : `Reference: ${entry.reference?.name}`
+                          }
+                        />
+                      ) : (
+                        <>
+                          <Video size={23} />
+                          <span>NO FRAME</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="shot-card-meta">
+                      <b>{String(index + 1).padStart(2, "0")}</b>
+                      <span>{entry.title}</span>
+                      <small>
+                        {scene.items.find((item) => item.id === entry.cameraId)
+                          ?.focalLength ?? 35}
+                        mm
+                      </small>
+                    </div>
+                    <div className="shot-card-planning">
+                      <span
+                        className={`shot-status shot-status-${entry.status ?? "planned"}`}
+                      >
+                        {entry.status ?? "planned"}
+                      </span>
+                      <span title={entry.setup || "No setup"}>
+                        {entry.setup || "No setup"}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                {!scene.shots.length && (
+                  <p className="empty-shots">
+                    Add a shot to place a camera and start your storyboard.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="shot-list-scroll">
+                <table className="shot-list-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Shot</th>
+                      <th>Setup</th>
+                      <th>Camera / lens</th>
+                      <th>Status</th>
+                      <th>Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orderedShots.map((entry, index) => {
+                      const camera = scene.items.find(
+                        (item) => item.id === entry.cameraId,
+                      );
+                      return (
+                        <tr
+                          key={entry.id}
+                          className={entry.id === shot?.id ? "active" : ""}
+                        >
+                          <td>{String(index + 1).padStart(2, "0")}</td>
+                          <td>
+                            <button
+                              className="shot-list-title"
+                              onClick={() => activateShot(entry)}
+                            >
+                              {entry.title}
+                            </button>
+                          </td>
+                          <td>{entry.setup || "—"}</td>
+                          <td>
+                            {camera?.name || "Camera"} ·{" "}
+                            {camera?.focalLength ?? 35} mm
+                          </td>
+                          <td>
+                            <select
+                              aria-label={`Status for ${entry.title}`}
+                              value={entry.status ?? "planned"}
+                              onChange={(event) =>
+                                updateShotById(entry.id, {
+                                  status: event.target.value as Shot["status"],
+                                })
+                              }
+                            >
+                              <option value="planned">Planned</option>
+                              <option value="ready">Ready</option>
+                              <option value="shot">Shot</option>
+                            </select>
+                          </td>
+                          <td>{entry.duration}s</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {!orderedShots.length && (
+                  <p className="empty-shots">Add a shot to start the list.</p>
+                )}
+              </div>
+            )}
           </section>
         </main>
 
@@ -2876,6 +3000,35 @@ function App() {
                     updateShot({ title: event.target.value })
                   }
                 />
+              </label>
+              <label>
+                Setup
+                <input
+                  list="shot-setup-names"
+                  value={shot.setup ?? ""}
+                  placeholder="e.g. Living room A"
+                  onChange={(event) =>
+                    updateShot({ setup: event.target.value })
+                  }
+                />
+                <datalist id="shot-setup-names">
+                  {setupNames.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </label>
+              <label>
+                Status
+                <select
+                  value={shot.status ?? "planned"}
+                  onChange={(event) =>
+                    updateShot({ status: event.target.value as Shot["status"] })
+                  }
+                >
+                  <option value="planned">Planned</option>
+                  <option value="ready">Ready</option>
+                  <option value="shot">Shot</option>
+                </select>
               </label>
               <div className="shot-reference-actions">
                 <button onClick={() => shotReferenceRef.current?.click()}>

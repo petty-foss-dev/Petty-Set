@@ -550,7 +550,7 @@
   font-weight: 700;
 }
 .shot-panel {
-  height: 213px;
+  height: 242px;
   flex: none;
   background: #fafaf8;
   border-top: 1px solid #e5e5e1;
@@ -581,11 +581,38 @@
   color: #adb3b1;
   margin-left: 5px;
 }
+.shot-progress {
+  margin: 3px 0 0;
+  color: #8a7156;
+  font-size: 10px;
+  white-space: nowrap;
+}
 .shot-controls {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+.shot-view-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #dacbb6;
+  border-radius: 6px;
+  background: #efe7d9;
+}
+.shot-view-switch button {
+  padding: 5px 8px;
+  border-radius: 4px;
+  background: transparent;
+  color: #786d60;
+  font-size: 10px;
+  font-weight: 700;
+}
+.shot-view-switch button.active {
+  background: #fffaf0;
+  color: #5e3826;
+  box-shadow: 0 1px 4px #4b33202b;
 }
 .reference-notice {
   margin: 0 19px 8px;
@@ -701,6 +728,92 @@
 .shot-card-meta small {
   color: #a5aca9;
   margin-left: auto;
+}
+.shot-card-planning {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px 5px;
+  min-width: 0;
+  color: #776c5e;
+  font-size: 9px;
+}
+.shot-card-planning > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shot-status {
+  flex: none;
+  border-radius: 3px;
+  padding: 3px 5px;
+  text-transform: uppercase;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.shot-status-planned {
+  background: #e9e2d6;
+  color: #796b56;
+}
+.shot-status-ready {
+  background: #e7d3ab;
+  color: #7e5424;
+}
+.shot-status-shot {
+  background: #cfe2d5;
+  color: #346849;
+}
+.shot-list-scroll {
+  overflow: auto;
+  padding: 0 19px 14px;
+  flex: 1;
+}
+.shot-list-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 11px;
+  color: #53483c;
+}
+.shot-list-table th {
+  position: sticky;
+  top: 0;
+  background: #fafaf8;
+  color: #8a7156;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  font-size: 9px;
+  padding: 7px 9px;
+  border-bottom: 1px solid #d9cbb8;
+}
+.shot-list-table td {
+  padding: 6px 9px;
+  border-bottom: 1px solid #e4daca;
+  white-space: nowrap;
+}
+.shot-list-table tr.active td {
+  background: #fff4df;
+}
+.shot-list-title {
+  padding: 2px 0;
+  background: transparent;
+  color: #4c3525;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+.shot-list-title:hover {
+  text-decoration: underline;
+}
+.shot-list-table select {
+  border: 1px solid #d6c7b1;
+  border-radius: 4px;
+  background: #fffaf0;
+  padding: 4px;
+  color: #493d30;
+  font-size: 10px;
 }
 .empty-shots {
   font-size: 12px;
@@ -1050,10 +1163,11 @@
     padding: 0 7px;
   }
   .shot-panel {
-    height: 201px;
+    height: 250px;
   }
   .shot-panel-heading {
     padding: 11px;
+    flex-wrap: wrap;
   }
   .shot-controls {
     gap: 5px;

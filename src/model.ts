@@ -210,6 +210,8 @@ export interface Shot {
   title: string;
   cameraId: string;
   notes: string;
+  setup?: string;
+  status?: "planned" | "ready" | "shot";
   frame?: string;
   reference?: { name: string; image: string };
   duration: number;
@@ -462,6 +464,9 @@ export function isProject(value: unknown): value is Project {
         shotIds.has(shot.id) ||
         !isString(shot.title) ||
         !isString(shot.notes) ||
+        (shot.setup !== undefined && !isString(shot.setup)) ||
+        (shot.status !== undefined &&
+          !["planned", "ready", "shot"].includes(shot.status as string)) ||
         !isString(shot.cameraId) ||
         items.get(shot.cameraId) !== "camera" ||
         !isFiniteNumber(shot.duration) ||
@@ -992,6 +997,8 @@ export function furnishedScene(): SetScene {
     title: "Camera A · two-shot",
     cameraId: camera.id,
     notes: "Establish the room and both actors.",
+    setup: "Living room A",
+    status: "ready" as const,
     duration: 5,
     aspectRatio: "16:9" as AspectRatio,
     actorActions: {
@@ -1004,6 +1011,8 @@ export function furnishedScene(): SetScene {
     title: "Camera B · reverse",
     cameraId: reverseCamera.id,
     notes: "Compare the reverse angle across the conversation.",
+    setup: "Living room B",
+    status: "planned",
     duration: 5,
     aspectRatio: "16:9",
     actorActions: {
