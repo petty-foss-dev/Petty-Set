@@ -1761,15 +1761,3 @@ export function backlotScene(): SetScene {
     shootOrder: [shot.id],
   };
 }
-
-export function loadProject(): Project {
-  try {
-    const raw = localStorage.getItem("petty-set-project");
-    if (!raw) return sampleProject();
-    const value: unknown = JSON.parse(raw);
-    if (isProject(value)) return value;
-  } catch {
-    /* Invalid local data starts a fresh project. */
-  }
-  return sampleProject();
-}

@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the address printed by Vite. The app stores the current project in this browser's local storage. Export a project file regularly if you need a durable backup.
+Open the address printed by Vite. Films are saved separately in this browser's IndexedDB; an existing single-film local save is migrated automatically and retained as a recovery copy. Export project files regularly for backups you can move to another browser or computer.
 
 ## Preview
 
@@ -41,7 +41,7 @@ Open the address printed by Vite. The app stores the current project in this bro
 
 ## Current features
 
-- One film with multiple scenes; each scene has a separate editable 3D set.
+- A local film library with separate autosave, create, switch, rename, delete, and portable import/export for each film. Each film has multiple scenes with separate editable 3D sets.
 - Draw walls on a quarter-meter grid with endpoint and edge snapping, drag out rectangular rooms, move shared corners, split walls, and add framed doorways and windows. Interior partitions split wall intersections and divide measured rooms. Closed outlines form individual 3D floors; plan view labels wall lengths and room areas. Position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden drawing mannequins with visible joints and neutral, greeting, or pointing poses, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
 - Add a furnished sample scene with connected rooms, two camera setups, actor actions, and a lighting power source without replacing the current scene. All sample objects remain editable.
 - Build an outdoor scene with grass, asphalt, sand, or studio ground; set sky color and sun direction/elevation; add original trees, park benches, vehicles, and paved ground patches. An exterior sample scene demonstrates the catalog.
@@ -71,11 +71,11 @@ The [parity plan](docs/PARITY_PLAN.md) defines the implementation phases and acc
 
 This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
 
-1. Modeling tools: irregular room drawing, collinear wall overlap handling, multiple openings per segment, room finishes, grouping, and a larger original asset catalog.
-2. Cinematography: named camera bodies and lenses, visual depth of field, curved camera paths, collision-aware movement, and take variants.
-3. Performance planning: inverse kinematics, a saved pose library, rigged animation assets, route timing/easing and collision checks, more lighting modifiers and editable cable routes.
+1. Modeling tools: richer material controls, tracing over imported floor plans, rotation and grouping tools, and a larger original asset catalog.
+2. Cinematography: visual depth of field, curved camera paths, collision-aware movement, and take variants.
+3. Performance planning: inverse kinematics, rigged animation assets, route collision checks, more lighting modifiers and editable cable routes.
 4. Production outputs: richer board layouts and more print layout options.
-5. Collaboration: project accounts, shareable review links, comments, crew roles, editing, and branding. This requires an optional server; local projects should continue to work without one.
+5. Collaboration: optional project accounts, shareable review links, comments, crew roles, editing, and branding.
 
 ## References
 

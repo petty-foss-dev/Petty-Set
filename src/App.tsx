@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import type { ChangeEvent, SetStateAction } from "react";
 import {
   Camera,
+  Check,
   ChevronDown,
   Clapperboard,
   Download,
@@ -53,8 +61,8 @@ import {
   outdoorScene,
   id,
   isProject,
-  loadProject,
   makeItem,
+  sampleProject,
   wallBetween,
   wallEndpoints,
   wallOpenings,
@@ -81,6 +89,17 @@ import type {
   Shot,
 } from "./model";
 import { historyReducer, projectHistory } from "./history";
+import type { ProjectHistory } from "./history";
+import {
+  activateFilm,
+  createFilm,
+  deleteFilm,
+  flushFilm,
+  openFilmLibrary,
+  renameFilm,
+  saveFilm,
+} from "./filmStore";
+import type { FilmSession, FilmSummary } from "./filmStore";
 import {
   localProject,
   maxAssetBytes,
@@ -213,9 +232,24 @@ async function imageReference(file: File) {
   }
 }
 
-function App() {
-  const [history, dispatch] = useReducer(historyReducer, undefined, () =>
-    projectHistory(loadProject()),
+interface EditorProps {
+  session: FilmSession;
+  initialHistory?: ProjectHistory;
+  onHistory: (id: string, history: ProjectHistory) => void;
+  onSaved: (film: FilmSummary) => void;
+  onOpen: (session: FilmSession) => void;
+}
+
+function Editor({
+  session,
+  initialHistory,
+  onHistory,
+  onSaved,
+  onOpen,
+}: EditorProps) {
+  const [history, dispatch] = useReducer(
+    historyReducer,
+    initialHistory ?? projectHistory(session.project),
   );
   const project = history.present;
   const [sceneId, setSceneId] = useState(project.scenes[0].id);
@@ -271,6 +305,12 @@ function App() {
   } | null>(null);
   const [layerError, setLayerError] = useState("");
   const [showExport, setShowExport] = useState(false);
+  const [showFilms, setShowFilms] = useState(false);
+  const [renamingFilmId, setRenamingFilmId] = useState<string>();
+  const [filmNameDraft, setFilmNameDraft] = useState("");
+  const [saveState, setSaveState] = useState<"saving" | "saved" | "error">(
+    "saved",
+  );
   const [showFloorplanControls, setShowFloorplanControls] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
   const [moveProgress, setMoveProgress] = useState(0);
@@ -368,8 +408,29 @@ function App() {
     !!Object.keys(shot?.actorActions ?? {}).length;
 
   useEffect(() => {
-    localStorage.setItem("petty-set-project", JSON.stringify(project));
-  }, [project]);
+    onHistory(session.id, history);
+  }, [history, onHistory, session.id]);
+
+  useEffect(() => {
+    let current = true;
+    queueMicrotask(() => {
+      if (current) setSaveState("saving");
+    });
+    void saveFilm(session.id, project).then(
+      (film) => {
+        if (current) {
+          onSaved(film);
+          setSaveState("saved");
+        }
+      },
+      () => {
+        if (current) setSaveState("error");
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [project, session.id, onSaved]);
 
   useEffect(() => {
     if (
@@ -1578,16 +1639,82 @@ function App() {
       const value: unknown = JSON.parse(await file.text());
       if (!isProject(value)) throw new Error("Unsupported project");
       const restored = await localProject(value);
-      dispatch({ type: "replace", project: restored });
-      setSceneId(restored.scenes[0].id);
-      setCalibrationPoints([]);
-      setShotId(restored.scenes[0].shots[0]?.id);
-      resetMove();
-      setSelectedId(undefined);
+      await flushFilm(session.id);
+      onOpen(await createFilm(restored));
     } catch {
-      window.alert("This is not a valid Petty: Set project file.");
+      window.alert(
+        "The project could not be imported. Check the file and available browser storage.",
+      );
     }
     event.target.value = "";
+  }
+
+  async function openFilm(id: string) {
+    if (id === session.id) {
+      setShowFilms(false);
+      return;
+    }
+    try {
+      await flushFilm(session.id);
+      onOpen(await activateFilm(id));
+    } catch {
+      setSaveState("error");
+      window.alert(
+        "The current film could not be saved. Export a project backup before switching.",
+      );
+    }
+  }
+
+  async function newFilm() {
+    try {
+      await flushFilm(session.id);
+      onOpen(await createFilm({ ...sampleProject(), name: "Untitled Film" }));
+    } catch {
+      setSaveState("error");
+      window.alert(
+        "The film could not be created. Check available browser storage.",
+      );
+    }
+  }
+
+  async function changeFilmName(film: FilmSummary) {
+    const name = filmNameDraft.trim();
+    if (!name) return;
+    if (name === film.name) {
+      setRenamingFilmId(undefined);
+      return;
+    }
+    try {
+      await flushFilm(session.id);
+      const updated = await renameFilm(film.id, name);
+      onSaved(updated);
+      setRenamingFilmId(undefined);
+      if (film.id === session.id) {
+        dispatch({
+          type: "edit",
+          update: (current) => ({ ...current, name }),
+        });
+      }
+    } catch {
+      window.alert("The film could not be renamed.");
+    }
+  }
+
+  async function removeFilm(film: FilmSummary) {
+    if (session.films.length < 2) return;
+    if (
+      !window.confirm(
+        `Delete “${film.name}” from this browser? Export a backup first if you need it later.`,
+      )
+    )
+      return;
+    try {
+      await flushFilm(session.id);
+      onOpen(await deleteFilm(film.id));
+    } catch {
+      setSaveState("error");
+      window.alert("The film could not be deleted.");
+    }
   }
 
   function uploadFloorplan(event: ChangeEvent<HTMLInputElement>) {
@@ -1672,6 +1799,79 @@ function App() {
             setProject((current) => ({ ...current, name: event.target.value }))
           }
         />
+        <button
+          className="icon-button film-menu-toggle"
+          aria-label="Film library"
+          title="Film library"
+          aria-expanded={showFilms}
+          onClick={() => setShowFilms(!showFilms)}
+        >
+          <ChevronDown size={17} />
+        </button>
+        {showFilms && (
+          <div className="popover film-menu">
+            <div className="film-menu-heading">Your films</div>
+            {session.films.map((film) => (
+              <div className="film-menu-row" key={film.id}>
+                {renamingFilmId === film.id ? (
+                  <input
+                    aria-label={`New name for ${film.name}`}
+                    value={filmNameDraft}
+                    autoFocus
+                    onChange={(event) => setFilmNameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void changeFilmName(film);
+                      if (event.key === "Escape") setRenamingFilmId(undefined);
+                    }}
+                  />
+                ) : (
+                  <button
+                    className={film.id === session.id ? "active" : ""}
+                    onClick={() => void openFilm(film.id)}
+                  >
+                    {film.name || "Untitled Film"}
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label={
+                    renamingFilmId === film.id
+                      ? `Save name for ${film.name}`
+                      : `Rename ${film.name}`
+                  }
+                  title={
+                    renamingFilmId === film.id ? "Save name" : "Rename film"
+                  }
+                  onClick={() => {
+                    if (renamingFilmId === film.id) void changeFilmName(film);
+                    else {
+                      setRenamingFilmId(film.id);
+                      setFilmNameDraft(film.name);
+                    }
+                  }}
+                >
+                  {renamingFilmId === film.id ? (
+                    <Check size={14} />
+                  ) : (
+                    <PenLine size={14} />
+                  )}
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label={`Delete ${film.name}`}
+                  title="Delete film"
+                  disabled={session.films.length < 2}
+                  onClick={() => void removeFilm(film)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+            <button className="film-menu-new" onClick={() => void newFilm()}>
+              <Plus size={15} /> New film
+            </button>
+          </div>
+        )}
         <div className="history-actions">
           <button
             className="icon-button"
@@ -1694,7 +1894,11 @@ function App() {
         </div>
         <span className="save-status">
           <Save size={14} />
-          Saved locally
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "error"
+              ? "Save failed — export a backup"
+              : "Saved locally"}
         </span>
         <div className="topbar-actions">
           <button
@@ -4840,6 +5044,74 @@ function App() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function App() {
+  const [session, setSession] = useState<FilmSession | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [histories] = useState(() => new Map<string, ProjectHistory>());
+
+  useEffect(() => {
+    let active = true;
+    void openFilmLibrary().then(
+      (loaded) => {
+        if (active) setSession(loaded);
+      },
+      () => {
+        if (active) setLoadError(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const recordHistory = useCallback(
+    (id: string, history: ProjectHistory) => {
+      histories.set(id, history);
+    },
+    [histories],
+  );
+  const recordSave = useCallback((film: FilmSummary) => {
+    setSession((current) =>
+      current
+        ? {
+            ...current,
+            films: current.films.map((entry) =>
+              entry.id === film.id ? film : entry,
+            ),
+          }
+        : current,
+    );
+  }, []);
+  const openSession = useCallback((next: FilmSession) => {
+    setSession(next);
+  }, []);
+
+  if (loadError)
+    return (
+      <div className="library-loading">
+        <h1>Could not open the local film library</h1>
+        <p>
+          Your existing project has not been changed. Check browser storage
+          permissions or export your saved data from this browser.
+        </p>
+        <button onClick={() => window.location.reload()}>Try again</button>
+      </div>
+    );
+  if (!session)
+    return <div className="library-loading">Opening film library…</div>;
+
+  return (
+    <Editor
+      key={session.id}
+      session={session}
+      initialHistory={histories.get(session.id)}
+      onHistory={recordHistory}
+      onSaved={recordSave}
+      onOpen={openSession}
+    />
   );
 }
 
