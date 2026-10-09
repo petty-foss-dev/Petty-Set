@@ -10,6 +10,8 @@ import {
   wallBetween,
   wallEndpoints,
   actorPoseAt,
+  addActorWaypoint,
+  removeActorWaypoint,
   outdoorScene,
   backlotScene,
   mannequinJointsForPose,
@@ -454,6 +456,78 @@ test("actor movement follows waypoints and turns by the short arc", () => {
     z: -3,
     rotation: 90,
   });
+});
+
+test("actor route weights and easing vary leg speed without breaking joins", () => {
+  const start = { x: 0, y: 0, z: 0, rotation: 350 };
+  const path = {
+    waypoints: [{ x: 4, y: 0, z: 0, rotation: 10 }],
+    end: { x: 8, y: 0, z: 0, rotation: 90 },
+    legs: [
+      { weight: 3, easing: "smooth" },
+      { weight: 1, easing: "linear" },
+    ],
+  };
+  assert.equal(actorPoseAt(start, path, 0.25).x, 4 * (7 / 27));
+  assert.deepEqual(actorPoseAt(start, path, 0.75), path.waypoints[0]);
+  assert.deepEqual(actorPoseAt(start, path, 1), path.end);
+  assert.ok(Math.abs(actorPoseAt(start, path, 0.75 - 1e-8).x - 4) < 1e-5);
+  assert.ok(Math.abs(actorPoseAt(start, path, 0.75 + 1e-8).x - 4) < 1e-5);
+  assert.equal(actorPoseAt(start, path, 0.875).x, 6);
+  assert.ok(actorPoseAt(start, path, 0.25).rotation > 350);
+});
+
+test("actor route editing keeps timing aligned with waypoints", () => {
+  const end = { x: 8, y: 0, z: 0, rotation: 0 };
+  const point = { x: 4, y: 0, z: 0, rotation: 0 };
+  const timed = { waypoints: [], end, legs: [{ weight: 4, easing: "smooth" }] };
+  const inserted = addActorWaypoint(timed, point);
+  assert.deepEqual(inserted.legs, [
+    { weight: 2, easing: "smooth" },
+    { weight: 2, easing: "smooth" },
+  ]);
+  assert.deepEqual(removeActorWaypoint(inserted, 0), timed);
+  const legacy = { waypoints: [], end };
+  assert.equal(addActorWaypoint(legacy, point).legs, undefined);
+  assert.equal(
+    removeActorWaypoint(addActorWaypoint(legacy, point), 0).legs,
+    undefined,
+  );
+});
+
+test("actor route validation and legacy projects roundtrip", () => {
+  const project = { version: 1, name: "Exterior", scenes: [outdoorScene()] };
+  const oldCopy = JSON.parse(JSON.stringify(project));
+  assert.equal(isProject(oldCopy), true);
+  const scene = project.scenes[0];
+  const shot = scene.shots.find(
+    (entry) => Object.keys(entry.actorPaths ?? {}).length,
+  );
+  assert.ok(shot);
+  const actorId = Object.keys(shot.actorPaths)[0];
+  const original = shot.actorPaths[actorId];
+  shot.actorPaths[actorId] = {
+    ...original,
+    legs: Array.from({ length: original.waypoints.length + 1 }, () => ({
+      weight: 1,
+      easing: "linear",
+    })),
+  };
+  assert.equal(isProject(JSON.parse(JSON.stringify(project))), true);
+  shot.actorPaths[actorId].legs[0].weight = 0;
+  assert.equal(isProject(project), false);
+  shot.actorPaths[actorId].legs[0].weight = 1;
+  shot.actorPaths[actorId].legs = shot.actorPaths[actorId].legs.map((leg) => ({
+    ...leg,
+    weight: 1e308,
+  }));
+  assert.equal(isProject(project), false);
+  shot.actorPaths[actorId].legs[0].weight = 1;
+  shot.actorPaths[actorId].legs[1].weight = 1;
+  shot.actorPaths[actorId].legs[0].easing = "bounce";
+  assert.equal(isProject(project), false);
+  shot.actorPaths[actorId].legs = [];
+  assert.equal(isProject(project), false);
 });
 
 test("outdoor scene and actor routes survive project validation", () => {

@@ -59,6 +59,9 @@ import {
   wallEndpoints,
   wallOpenings,
   addWallOpening,
+  addActorWaypoint,
+  removeActorWaypoint,
+  actorPathLegs,
   replaceWallOpening,
   baseLayerId,
   sceneLayers,
@@ -3575,12 +3578,13 @@ function App() {
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    updateActorPath(selected.id, {
-                                      ...shot.actorPaths![selected.id],
-                                      waypoints: shot.actorPaths![
-                                        selected.id
-                                      ].waypoints.filter((_, i) => i !== index),
-                                    })
+                                    updateActorPath(
+                                      selected.id,
+                                      removeActorWaypoint(
+                                        shot.actorPaths![selected.id],
+                                        index,
+                                      ),
+                                    )
                                   }
                                 >
                                   Remove
@@ -3630,24 +3634,21 @@ function App() {
                           onClick={() => {
                             const path = shot.actorPaths![selected.id];
                             const previous = path.waypoints.at(-1) ?? selected;
-                            updateActorPath(selected.id, {
-                              ...path,
-                              waypoints: [
-                                ...path.waypoints,
-                                {
-                                  x: Number(
-                                    ((previous.x + path.end.x) / 2).toFixed(2),
-                                  ),
-                                  y: Number(
-                                    ((previous.y + path.end.y) / 2).toFixed(2),
-                                  ),
-                                  z: Number(
-                                    ((previous.z + path.end.z) / 2).toFixed(2),
-                                  ),
-                                  rotation: previous.rotation,
-                                },
-                              ],
-                            });
+                            updateActorPath(
+                              selected.id,
+                              addActorWaypoint(path, {
+                                x: Number(
+                                  ((previous.x + path.end.x) / 2).toFixed(2),
+                                ),
+                                y: Number(
+                                  ((previous.y + path.end.y) / 2).toFixed(2),
+                                ),
+                                z: Number(
+                                  ((previous.z + path.end.z) / 2).toFixed(2),
+                                ),
+                                rotation: previous.rotation,
+                              }),
+                            );
                           }}
                         >
                           <Plus size={14} /> Add actor waypoint
@@ -3681,6 +3682,99 @@ function App() {
                               />
                             </label>
                           ))}
+                        </div>
+                        <div className="actor-route-timing">
+                          <h4>Route timing</h4>
+                          <p className="field-note">
+                            Each leg takes a share of the shot duration. Higher
+                            weights give a leg more time.
+                          </p>
+                          {actorPathLegs(shot.actorPaths[selected.id]).map(
+                            (leg, index) => (
+                              <div className="actor-route-leg" key={index}>
+                                <strong>
+                                  {index === 0 ? "Start" : `Waypoint ${index}`}{" "}
+                                  →{" "}
+                                  {index ===
+                                  shot.actorPaths![selected.id].waypoints.length
+                                    ? "End"
+                                    : `Waypoint ${index + 1}`}
+                                </strong>
+                                <div className="field-grid">
+                                  <label>
+                                    <span>Time weight</span>
+                                    <input
+                                      type="number"
+                                      min="0.1"
+                                      step="0.1"
+                                      value={leg.weight}
+                                      onChange={(event) => {
+                                        const weight = Number(
+                                          event.target.value,
+                                        );
+                                        if (
+                                          !Number.isFinite(weight) ||
+                                          weight <= 0
+                                        )
+                                          return;
+                                        const path =
+                                          shot.actorPaths![selected.id];
+                                        const legs = actorPathLegs(path).map(
+                                          (entry, i) =>
+                                            i === index
+                                              ? { ...entry, weight }
+                                              : entry,
+                                        );
+                                        if (
+                                          !Number.isFinite(
+                                            legs.reduce(
+                                              (sum, entry) =>
+                                                sum + entry.weight,
+                                              0,
+                                            ),
+                                          )
+                                        )
+                                          return;
+                                        updateActorPath(selected.id, {
+                                          ...path,
+                                          legs,
+                                        });
+                                      }}
+                                    />
+                                  </label>
+                                  <label>
+                                    <span>Easing</span>
+                                    <select
+                                      value={leg.easing}
+                                      onChange={(event) => {
+                                        const path =
+                                          shot.actorPaths![selected.id];
+                                        updateActorPath(selected.id, {
+                                          ...path,
+                                          legs: actorPathLegs(path).map(
+                                            (entry, i) =>
+                                              i === index
+                                                ? {
+                                                    ...entry,
+                                                    easing: event.target
+                                                      .value as
+                                                      "linear" | "smooth",
+                                                  }
+                                                : entry,
+                                          ),
+                                        });
+                                      }}
+                                    >
+                                      <option value="linear">Linear</option>
+                                      <option value="smooth">
+                                        Smooth start/stop
+                                      </option>
+                                    </select>
+                                  </label>
+                                </div>
+                              </div>
+                            ),
+                          )}
                         </div>
                       </>
                     )}

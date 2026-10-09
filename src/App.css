@@ -1325,6 +1325,24 @@
   margin: 8px 0 12px;
   padding: 0;
 }
+.actor-route-timing {
+  border-top: 1px solid #e4e7e2;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+.actor-route-timing h4 {
+  margin: 0 0 5px;
+  font-size: 12px;
+}
+.actor-route-leg {
+  padding-top: 8px;
+}
+.actor-route-leg strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #52605b;
+  font-size: 11px;
+}
 .camera-move-fields input[type="range"] {
   padding: 0;
 }

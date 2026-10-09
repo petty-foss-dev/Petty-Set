@@ -45,6 +45,12 @@ export interface ActorMark {
 export interface ActorPath {
   waypoints: ActorMark[];
   end: ActorMark;
+  legs?: ActorPathLeg[];
+}
+
+export interface ActorPathLeg {
+  weight: number;
+  easing: "linear" | "smooth";
 }
 
 export interface MannequinJoints {
@@ -867,7 +873,21 @@ export function isProject(value: unknown): value is Project {
             !isRecord(path) ||
             !isActorMark(path.end) ||
             !Array.isArray(path.waypoints) ||
-            !path.waypoints.every(isActorMark)
+            !path.waypoints.every(isActorMark) ||
+            (path.legs !== undefined &&
+              (!Array.isArray(path.legs) ||
+                path.legs.length !== path.waypoints.length + 1 ||
+                !path.legs.every(
+                  (leg) =>
+                    isRecord(leg) &&
+                    typeof leg.weight === "number" &&
+                    Number.isFinite(leg.weight) &&
+                    leg.weight > 0 &&
+                    (leg.easing === "linear" || leg.easing === "smooth"),
+                ) ||
+                !Number.isFinite(
+                  path.legs.reduce((sum, leg) => sum + leg.weight, 0),
+                )))
           )
             return false;
         }
@@ -1044,9 +1064,23 @@ export function actorPoseAt(
   progress: number,
 ) {
   const points = [start, ...path.waypoints, path.end];
-  const travel = Math.min(1, Math.max(0, progress)) * (points.length - 1);
-  const segment = Math.min(points.length - 2, Math.floor(travel));
-  const fraction = travel - segment;
+  const legs = actorPathLegs(path);
+  const total = legs.reduce((sum, leg) => sum + leg.weight, 0);
+  const travel = Math.min(1, Math.max(0, progress)) * total;
+  let segment = 0;
+  let elapsed = 0;
+  while (
+    segment < legs.length - 1 &&
+    travel >= elapsed + legs[segment].weight
+  ) {
+    elapsed += legs[segment].weight;
+    segment++;
+  }
+  const linear = (travel - elapsed) / legs[segment].weight;
+  const fraction =
+    legs[segment].easing === "smooth"
+      ? linear * linear * (3 - 2 * linear)
+      : linear;
   const from = points[segment];
   const to = points[segment + 1];
   const turn = ((((to.rotation - from.rotation) % 360) + 540) % 360) - 180;
@@ -1055,6 +1089,51 @@ export function actorPoseAt(
     y: from.y + (to.y - from.y) * fraction,
     z: from.z + (to.z - from.z) * fraction,
     rotation: from.rotation + turn * fraction,
+  };
+}
+
+export function actorPathLegs(path: ActorPath): ActorPathLeg[] {
+  return (
+    path.legs ??
+    Array.from({ length: path.waypoints.length + 1 }, () => ({
+      weight: 1,
+      easing: "linear" as const,
+    }))
+  );
+}
+
+export function addActorWaypoint(path: ActorPath, point: ActorMark): ActorPath {
+  const legs = path.legs;
+  const final = legs?.at(-1);
+  return {
+    ...path,
+    waypoints: [...path.waypoints, point],
+    legs:
+      legs && final
+        ? [
+            ...legs.slice(0, -1),
+            { ...final, weight: final.weight / 2 },
+            { ...final, weight: final.weight / 2 },
+          ]
+        : undefined,
+  };
+}
+
+export function removeActorWaypoint(path: ActorPath, index: number): ActorPath {
+  const legs = path.legs;
+  return {
+    ...path,
+    waypoints: path.waypoints.filter((_, i) => i !== index),
+    legs: legs
+      ? [
+          ...legs.slice(0, index),
+          {
+            ...legs[index],
+            weight: legs[index].weight + legs[index + 1].weight,
+          },
+          ...legs.slice(index + 2),
+        ]
+      : undefined,
   };
 }
 
