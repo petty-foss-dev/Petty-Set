@@ -2088,6 +2088,21 @@ function Editor({
     setShowExport(false);
   }
 
+  async function exportDailyPlanPDF() {
+    if (!selectedShootDay) return;
+    const [{ jsPDF }, { renderDailyPlan }] = await Promise.all([
+      import("jspdf"),
+      import("./dailyPlanPDF"),
+    ]);
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    renderDailyPlan(pdf, project, selectedShootDay);
+    pdf.save(
+      `${project.name}-${selectedShootDay.date}-${selectedShootDay.unit}-day-plan.pdf`
+        .replace(/[^a-z0-9.-]/gi, "-")
+        .toLowerCase(),
+    );
+  }
+
   function exportCameraStill() {
     if (!shot || !cameraItem || mode !== "camera" || !captureRef.current)
       return;
@@ -2990,6 +3005,12 @@ function Editor({
                         }
                       />
                     </label>
+                    <button
+                      className="text-button"
+                      onClick={() => void exportDailyPlanPDF()}
+                    >
+                      <FileText size={15} /> Export day plan PDF
+                    </button>
                   </div>
                 )}
               </div>
