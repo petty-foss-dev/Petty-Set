@@ -1,5 +1,6 @@
 import { isProject, sampleProject } from "./model.ts";
 import type { Project } from "./model.ts";
+import { restoreProjectImages, storeProjectImages } from "./imageStore.ts";
 
 const databaseName = "petty-set-library";
 const filmsStore = "films";
@@ -103,8 +104,8 @@ function sortedFilms(films: FilmSummary[]): FilmSummary[] {
   );
 }
 
-function readSession(): Promise<FilmSession> {
-  return transact<FilmSession>(
+async function readSession(): Promise<FilmSession> {
+  const stored = await transact<FilmSession>(
     [filmsStore, indexStore, metaStore],
     "readonly",
     (transaction, result, fail) => {
@@ -129,16 +130,19 @@ function readSession(): Promise<FilmSession> {
         }
         const record = transaction.objectStore(filmsStore).get(activeId);
         record.onsuccess = () => {
-          if (!isProject(record.result)) {
-            fail(new Error("Active film is missing or invalid"));
+          if (!record.result) {
+            fail(new Error("Active film is missing"));
             return;
           }
-          project = record.result;
+          project = record.result as Project;
           finish();
         };
       };
     },
   );
+  const project = await restoreProjectImages(stored.project);
+  if (!isProject(project)) throw new Error("Active film is invalid");
+  return { ...stored, project };
 }
 
 export async function openFilmLibrary(): Promise<FilmSession> {
@@ -189,8 +193,9 @@ export async function flushAllFilms(): Promise<void> {
 
 export function saveFilm(id: string, project: Project): Promise<FilmSummary> {
   if (!isProject(project)) return Promise.reject(new Error("Invalid film"));
-  return queueFilm(id, () =>
-    transact<FilmSummary>(
+  return queueFilm(id, async () => {
+    const stored = await storeProjectImages(project);
+    return transact<FilmSummary>(
       [filmsStore, indexStore],
       "readwrite",
       (transaction, result, fail) => {
@@ -202,24 +207,25 @@ export function saveFilm(id: string, project: Project): Promise<FilmSummary> {
             return;
           }
           const summary = { id, name: project.name, updatedAt: Date.now() };
-          films.put(project, id);
+          films.put(stored, id);
           transaction.objectStore(indexStore).put(summary, id);
           result(summary);
         };
       },
-    ),
-  );
+    );
+  });
 }
 
 export async function createFilm(project: Project): Promise<FilmSession> {
   if (!isProject(project)) throw new Error("Invalid film");
   await flushAllFilms();
+  const stored = await storeProjectImages(project);
   const id = crypto.randomUUID();
   await transact<void>(
     [filmsStore, indexStore, metaStore],
     "readwrite",
     (transaction) => {
-      transaction.objectStore(filmsStore).put(project, id);
+      transaction.objectStore(filmsStore).put(stored, id);
       transaction.objectStore(indexStore).put(
         {
           id,
@@ -242,8 +248,8 @@ export async function activateFilm(id: string): Promise<FilmSession> {
     (transaction, _result, fail) => {
       const record = transaction.objectStore(filmsStore).get(id);
       record.onsuccess = () => {
-        if (!isProject(record.result)) {
-          fail(new Error("Film is missing or invalid"));
+        if (!record.result) {
+          fail(new Error("Film is missing"));
           return;
         }
         transaction.objectStore(metaStore).put(id, activeKey);
@@ -264,8 +270,8 @@ export function renameFilm(id: string, name: string): Promise<FilmSummary> {
         const films = transaction.objectStore(filmsStore);
         const existing = films.get(id);
         existing.onsuccess = () => {
-          if (!isProject(existing.result)) {
-            fail(new Error("Film is missing or invalid"));
+          if (!existing.result) {
+            fail(new Error("Film is missing"));
             return;
           }
           const summary = { id, name: trimmed, updatedAt: Date.now() };

@@ -48,7 +48,7 @@ Prioritize the following additions after the current storyboard import:
 3. **Production interchange:** Fountain scene import, batch reference management, richer PDF/CSV export, and a portable local project archive.
 4. **On-set use:** optional continuity notes and take logging linked to a shot. Keep script input optional for unscripted work.
 
-Reference images are resized and embedded in the local project file. The current browser autosave limit makes very large image libraries a separate storage architecture task.
+Reference images are resized for editing, stored separately in IndexedDB, and embedded in portable project exports. Large image libraries still need performance and storage-pressure testing.
 
 The light trace is a **direct illumination estimate** on the floor in lux. Click the plan floor to meter any point and see each visible fixture's contribution. It uses fixture lumens, beam geometry, inverse-square falloff, floor incidence, wall/opening visibility, and rotated-box proxies for solid props. Three.js renders the matching fixtures with candela-based spot/point lights and shadow maps. It does not yet solve indirect bounce, glass transmission, IES distribution, detailed mesh transmission/occlusion, or calibrated exposure. Three.js [SpotLight](https://threejs.org/docs/pages/SpotLight.html) and [PointLight](https://threejs.org/docs/pages/PointLight.html) document their candela units and inverse-square decay; [RectAreaLight](https://threejs.org/docs/pages/RectAreaLight.html) cannot cast shadows in this WebGL renderer, so the softbox remains a shadow-casting approximation.
 

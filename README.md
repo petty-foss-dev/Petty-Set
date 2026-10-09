@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the address printed by Vite. Films are saved separately in this browser's IndexedDB; an existing single-film local save is migrated automatically and retained as a recovery copy. Export project files regularly for backups you can move to another browser or computer.
+Open the address printed by Vite. Films, model files, reference images, floor-plan images, and captured frames are saved in this browser's IndexedDB; an existing single-film local save is migrated automatically and retained as a recovery copy. Export project files regularly for backups you can move to another browser or computer.
 
 ## Preview
 
@@ -48,6 +48,7 @@ Open the address printed by Vite. Films are saved separately in this browser's I
 - Dress a stylized backlot street with editable storefront, brick, and theater facades, custom sign text, detailed streetlamps and barrels, road markings, scored sidewalks, curbs, and wooden actors. The Main Street sample includes an actor route, a greeting pose, and a camera shot. The editor uses a warm studio palette inspired by classic movie-making games; all scene geometry and styling are original.
 - Extend a selected wall into an adjoining room with a doorway, then furnish that room and route a camera move through it with editable waypoints.
 - Import self-contained glTF 2.0 `.glb` assets up to 50 MB. Model bytes stay in local IndexedDB storage; exported project JSON embeds them for portable backups.
+- Store storyboard references, imported floor-plan images, and captured frames outside the film record while keeping project backups self-contained.
 - Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Place a power distribution source, assign lights to it, set fixture loads and source capacity, and see cable runs and total load in the set plan.
 - Create shot-specific Plan A/B lighting alternatives, duplicate and rename plans, and preview each plan without changing the shared set or other shots.

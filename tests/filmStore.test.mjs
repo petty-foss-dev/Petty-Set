@@ -72,6 +72,48 @@ test("films save independently and the latest queued edit wins", async () => {
   await assert.rejects(deleteFilm(first.id), /last film/);
 });
 
+test("images leave film records while portable project data remains intact", async () => {
+  await clearLibrary();
+  localStorage.removeItem("petty-set-project");
+  const project = sampleProject();
+  const floorplan = "data:image/png;base64,aGVsbG8=";
+  const frame = "data:image/png;base64,d29ybGQ=";
+  const reference = "data:image/jpeg;base64,cG9zZQ==";
+  project.scenes[0].floorplan = floorplan;
+  project.scenes[0].shots[0].frame = frame;
+  project.scenes[0].shots[0].reference = {
+    name: "Board 1",
+    image: reference,
+  };
+  await openFilmLibrary();
+  const session = await createFilm(project);
+  assert.equal(session.project.scenes[0].floorplan, floorplan);
+  assert.equal(session.project.scenes[0].shots[0].frame, frame);
+  assert.equal(session.project.scenes[0].shots[0].reference.image, reference);
+
+  const database = await new Promise((resolve, reject) => {
+    const request = indexedDB.open("petty-set-library", 1);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const stored = await new Promise((resolve, reject) => {
+    const request = database
+      .transaction("films")
+      .objectStore("films")
+      .get(session.id);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  database.close();
+  assert.match(stored.scenes[0].floorplan, /^pettyset-image:/);
+  assert.match(stored.scenes[0].shots[0].frame, /^pettyset-image:/);
+  assert.match(stored.scenes[0].shots[0].reference.image, /^pettyset-image:/);
+  assert.equal(
+    (await openFilmLibrary()).project.scenes[0].floorplan,
+    floorplan,
+  );
+});
+
 test("invalid legacy data remains available for manual recovery", async () => {
   await clearLibrary();
   localStorage.setItem("petty-set-project", "{broken");
