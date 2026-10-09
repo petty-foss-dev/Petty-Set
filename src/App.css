@@ -1054,3 +1054,164 @@
     gap: 4px;
   }
 }
+
+.app-shell {
+  background: #e9e1d3;
+}
+.topbar {
+  background: #322e2b;
+  border-bottom-color: #211f1d;
+  box-shadow: 0 3px 12px #241c1530;
+}
+.brand,
+.project-title {
+  color: #f5ead5;
+}
+.brand-symbol,
+.brand-colon {
+  color: #dea86d;
+}
+.topbar-divider {
+  background: #655c52;
+}
+.topbar .icon-button {
+  color: #d1c3ae;
+}
+.topbar .icon-button:hover {
+  background: #534a40;
+  color: #fff1d8;
+}
+.save-status {
+  color: #bbaa92;
+}
+.topbar .secondary-button {
+  background: #51483e;
+  color: #f3e7d3;
+}
+.topbar .secondary-button:hover {
+  background: #67594a;
+}
+.primary-button,
+.small-primary {
+  background: #b86d3c;
+  color: #fff8ee;
+}
+.primary-button:hover,
+.small-primary:hover {
+  background: #a65c2d;
+}
+.left-panel,
+.right-panel,
+.shot-panel,
+.viewport-toolbar {
+  background: #f7f2e8;
+}
+.left-panel,
+.right-panel {
+  border-color: #d9cbb8;
+}
+.panel-heading,
+.scene-picker,
+.environment-fields,
+.section-title,
+.shot-panel-heading {
+  border-color: #ded2bf;
+}
+.panel-heading,
+.shot-panel h2,
+.inspector-name {
+  color: #342d26;
+}
+.scene-picker label,
+.eyebrow,
+.section-title,
+.inspector-kind,
+.field-section h3 {
+  color: #8a7156;
+}
+.scene-picker select,
+.scene-picker input,
+.environment-fields input,
+.environment-fields select,
+.inspector-fields input,
+.inspector-fields select,
+.shot-inspector input,
+.shot-inspector select,
+.shot-inspector textarea {
+  border-color: #d9cbb7;
+  background: #fffaf1;
+  color: #3b342d;
+}
+.scene-picker select:focus-visible,
+.scene-picker input:focus-visible,
+.environment-fields input:focus-visible,
+.environment-fields select:focus-visible,
+.inspector-fields input:focus-visible,
+.inspector-fields select:focus-visible,
+.shot-inspector input:focus-visible,
+.shot-inspector select:focus-visible,
+.shot-inspector textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid #b86d3c;
+  outline-offset: 2px;
+}
+.scene-picker .text-button {
+  color: #9e6038;
+}
+.scene-picker .text-button:hover,
+.object-row:hover,
+.add-grid button:hover {
+  background: #ede1cd;
+}
+.object-row.selected {
+  background: #f2dfc3;
+  box-shadow: inset 3px 0 #bd7644;
+}
+.object-icon {
+  color: #a16d48;
+}
+.viewport-toolbar {
+  border-bottom: 1px solid #d9cbb8;
+}
+.mode-switch,
+.order-switch {
+  background: #e9dfcf;
+}
+.mode-switch button.active,
+.order-switch button.active {
+  background: #fffaf0;
+  color: #5e3826;
+  box-shadow: 0 1px 4px #4b33202b;
+}
+.stage-wrap {
+  background: #bca88d;
+}
+.stage-hint {
+  background: #f9f1e4eb;
+  color: #493d30;
+  border: 1px solid #d4bfa1;
+}
+.shot-panel {
+  border-top: 1px solid #c9b89e;
+}
+.shot-card {
+  background: #fffaf0;
+  border: 1px solid #d7c7ae;
+  box-shadow: 0 2px 5px #49362618;
+}
+.shot-card.active {
+  border-color: #b36b3c;
+  box-shadow:
+    0 0 0 2px #d49b69,
+    0 4px 12px #49362626;
+}
+.shot-thumb {
+  background: #e7dfd0;
+}
+.shot-card-meta b {
+  color: #42352a;
+}
+.popover {
+  background: #fffaf1;
+  border-color: #d8c7ab;
+}

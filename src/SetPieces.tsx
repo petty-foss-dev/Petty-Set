@@ -4,6 +4,7 @@ import * as THREE from "three";
 import type { SceneItem } from "./model";
 import Mannequin from "./Mannequin";
 import { Bench, Tree, Vehicle } from "./OutdoorAssets";
+import { Barrel, Facade, Streetlamp } from "./BacklotAssets";
 
 const ImportedAsset = lazy(() => import("./ImportedAsset"));
 
@@ -568,6 +569,12 @@ export default function SetPiece({
       return <Bench item={item} />;
     case "vehicle":
       return <Vehicle item={item} />;
+    case "facade":
+      return <Facade item={item} />;
+    case "streetlamp":
+      return <Streetlamp item={item} />;
+    case "barrel":
+      return <Barrel item={item} />;
     case "ground":
       return (
         <group>

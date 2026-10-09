@@ -34,6 +34,7 @@ import {
   Flower2,
   RectangleHorizontal,
   Box as BoxIcon,
+  Building2,
   Undo2,
   Upload,
   UserRound,
@@ -44,6 +45,7 @@ import Stage from "./Stage";
 import type { ViewMode } from "./Stage";
 import {
   extendRoom,
+  backlotScene,
   furnishedScene,
   outdoorScene,
   id,
@@ -84,6 +86,9 @@ const itemIcons: Record<ItemKind, typeof Square> = {
   bench: Grip,
   vehicle: BoxIcon,
   ground: RectangleHorizontal,
+  facade: Building2,
+  streetlamp: Lightbulb,
+  barrel: BoxIcon,
   asset: BoxIcon,
 };
 const itemNames: Record<ItemKind, string> = {
@@ -102,6 +107,9 @@ const itemNames: Record<ItemKind, string> = {
   bench: "Park bench",
   vehicle: "Vehicle",
   ground: "Ground patch",
+  facade: "Backlot facade",
+  streetlamp: "Streetlamp",
+  barrel: "Barrel",
   asset: "3D asset",
 };
 
@@ -909,6 +917,23 @@ function App() {
             >
               <Flower2 size={15} /> Outdoor scene
             </button>
+            <button
+              className="text-button"
+              onClick={() => {
+                const next = backlotScene();
+                setProject((current) => ({
+                  ...current,
+                  scenes: [...current.scenes, next],
+                }));
+                setSceneId(next.id);
+                setShotId(next.shots[0].id);
+                resetMove();
+                setSelectedId(undefined);
+                setMode("stage");
+              }}
+            >
+              <Building2 size={15} /> Backlot scene
+            </button>
           </div>
           <div className="environment-fields">
             <h3>Setting</h3>
@@ -1436,6 +1461,48 @@ function App() {
                     <input
                       type="color"
                       value={selected.color ?? "#d2ab7d"}
+                      onChange={(event) =>
+                        updateItem(selected.id, { color: event.target.value })
+                      }
+                    />
+                  </label>
+                )}
+                {selected.kind === "facade" && (
+                  <>
+                    <label className="full-field">
+                      <span>Facade style</span>
+                      <select
+                        value={selected.facadeStyle ?? "storefront"}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            facadeStyle: event.target
+                              .value as SceneItem["facadeStyle"],
+                          })
+                        }
+                      >
+                        <option value="storefront">Storefront</option>
+                        <option value="brick">Brick</option>
+                        <option value="theater">Theater</option>
+                      </select>
+                    </label>
+                    <label className="full-field">
+                      <span>Paint</span>
+                      <input
+                        type="color"
+                        value={selected.color ?? "#c5ae83"}
+                        onChange={(event) =>
+                          updateItem(selected.id, { color: event.target.value })
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+                {selected.kind === "barrel" && (
+                  <label className="full-field">
+                    <span>Wood finish</span>
+                    <input
+                      type="color"
+                      value={selected.color ?? "#98663f"}
                       onChange={(event) =>
                         updateItem(selected.id, { color: event.target.value })
                       }

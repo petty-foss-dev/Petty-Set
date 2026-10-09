@@ -320,6 +320,18 @@ function StageContent({
             />
           ),
         )}
+      {scene.items
+        .filter((item) => item.kind === "streetlamp" && !item.hidden)
+        .map((item) => (
+          <pointLight
+            key={`streetlamp-${item.id}`}
+            position={[item.x, item.y + item.height * 0.91, item.z]}
+            color="#ffd494"
+            intensity={1.2}
+            distance={5}
+            decay={2}
+          />
+        ))}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow

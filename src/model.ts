@@ -17,6 +17,9 @@ export type ItemKind =
   | "bench"
   | "vehicle"
   | "ground"
+  | "facade"
+  | "streetlamp"
+  | "barrel"
   | "asset";
 
 export interface ActorMark {
@@ -58,6 +61,7 @@ export interface SceneItem {
   focusDistance?: number;
   color?: string;
   lightType?: "softbox" | "spot" | "practical";
+  facadeStyle?: "storefront" | "brick" | "theater";
   assetData?: string;
   roomExtended?: boolean;
   hidden?: boolean;
@@ -137,6 +141,9 @@ const itemKinds: ItemKind[] = [
   "bench",
   "vehicle",
   "ground",
+  "facade",
+  "streetlamp",
+  "barrel",
   "asset",
 ];
 
@@ -241,6 +248,11 @@ export function isProject(value: unknown): value is Project {
           !["softbox", "spot", "practical"].includes(
             item.lightType as string,
           )) ||
+        (item.facadeStyle !== undefined &&
+          (item.kind !== "facade" ||
+            !["storefront", "brick", "theater"].includes(
+              item.facadeStyle as string,
+            ))) ||
         (item.kind === "asset" &&
           (!isString(item.assetData) ||
             !item.assetData.startsWith(
@@ -402,6 +414,18 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
       return { ...base, width: 4.2, height: 1.6, depth: 1.8 };
     case "ground":
       return { ...base, width: 2, height: 0.03, depth: 5, color: "#c3bca9" };
+    case "facade":
+      return {
+        ...base,
+        width: 3.4,
+        height: 3.2,
+        depth: 0.5,
+        facadeStyle: "storefront",
+      };
+    case "streetlamp":
+      return { ...base, width: 0.8, height: 3.5, depth: 0.8 };
+    case "barrel":
+      return { ...base, width: 0.7, height: 1, depth: 0.7 };
     case "asset":
       return { ...base, width: 1, height: 1, depth: 1 };
   }
@@ -774,6 +798,147 @@ export function outdoorScene(): SetScene {
       skyColor: "#a9cce4",
       sunAzimuth: 35,
       sunElevation: 42,
+    },
+    items,
+    shots: [shot],
+    shootOrder: [shot.id],
+  };
+}
+
+export function backlotScene(): SetScene {
+  const camera = {
+    ...makeItem("camera", 1),
+    name: "Street camera",
+    x: 0,
+    z: 8.8,
+    height: 1.55,
+    focalLength: 24,
+    focusDistance: 10,
+  };
+  const lead = {
+    ...makeItem("actor", 1),
+    name: "Lead",
+    x: -1.1,
+    z: 0.7,
+    rotation: 15,
+  };
+  const items: SceneItem[] = [
+    {
+      ...makeItem("ground", 1),
+      name: "Main street",
+      z: 1.2,
+      width: 11.2,
+      depth: 12,
+      color: "#6f6b61",
+    },
+    {
+      ...makeItem("ground", 2),
+      name: "Shop sidewalk",
+      x: -4,
+      z: -3.1,
+      width: 4.4,
+      depth: 2,
+      color: "#b7a78b",
+    },
+    {
+      ...makeItem("ground", 3),
+      name: "Theater sidewalk",
+      x: 3.6,
+      z: -3.1,
+      width: 4.4,
+      depth: 2,
+      color: "#b7a78b",
+    },
+    {
+      ...makeItem("facade", 1),
+      name: "Corner shop",
+      x: -4,
+      z: -4.6,
+      width: 3.6,
+      height: 3.6,
+      facadeStyle: "storefront",
+      color: "#c8ab78",
+    },
+    {
+      ...makeItem("facade", 2),
+      name: "Brick apartment",
+      x: -0.4,
+      z: -5,
+      width: 3.6,
+      height: 4,
+      facadeStyle: "brick",
+      color: "#a16d59",
+    },
+    {
+      ...makeItem("facade", 3),
+      name: "Picture house",
+      x: 3.4,
+      z: -4.7,
+      width: 3.8,
+      height: 3.8,
+      facadeStyle: "theater",
+      color: "#c1a47e",
+    },
+    {
+      ...makeItem("streetlamp", 1),
+      name: "Streetlight · left",
+      x: -5.9,
+      z: -1.5,
+    },
+    {
+      ...makeItem("streetlamp", 2),
+      name: "Streetlight · right",
+      x: 5.5,
+      z: -1.7,
+    },
+    { ...makeItem("barrel", 1), name: "Shop barrel", x: -3.4, z: -2.25 },
+    {
+      ...makeItem("barrel", 2),
+      name: "Shop barrel · back",
+      x: -4.15,
+      z: -2.42,
+      height: 0.82,
+      color: "#a7754a",
+    },
+    {
+      ...makeItem("bench", 1),
+      name: "Street bench",
+      x: 3.5,
+      z: -2.1,
+      rotation: 180,
+    },
+    lead,
+    {
+      ...makeItem("actor", 2),
+      name: "Supporting player",
+      x: 1.5,
+      z: -0.6,
+      rotation: -25,
+    },
+    camera,
+  ];
+  const shot: Shot = {
+    id: id(),
+    title: "Meeting on Main Street",
+    cameraId: camera.id,
+    notes: "The lead crosses the street toward the picture house.",
+    duration: 7,
+    aspectRatio: "16:9",
+    actorPaths: {
+      [lead.id]: {
+        waypoints: [{ x: -0.8, y: 0, z: -0.3, rotation: 25 }],
+        end: { x: 0.2, y: 0, z: -1.6, rotation: 55 },
+      },
+    },
+  };
+  return {
+    id: id(),
+    name: "Backlot · Main Street",
+    environment: {
+      ground: "asphalt",
+      skyColor: "#d8bd9d",
+      sunAzimuth: -45,
+      sunElevation: 32,
     },
     items,
     shots: [shot],

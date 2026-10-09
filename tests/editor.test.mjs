@@ -10,6 +10,7 @@ import {
   wallEndpoints,
   actorPoseAt,
   outdoorScene,
+  backlotScene,
 } from "../src/model.ts";
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
@@ -147,6 +148,22 @@ test("outdoor scene and actor routes survive project validation", () => {
   const badSky = structuredClone(project);
   badSky.scenes[0].environment.skyColor = "blue";
   assert.equal(isProject(badSky), false);
+});
+
+test("backlot preset keeps editable facade styles and actor route valid", () => {
+  const scene = backlotScene();
+  const project = { version: 1, name: "Backlot", scenes: [scene] };
+  assert.equal(isProject(project), true);
+  assert.deepEqual(
+    scene.items
+      .filter((item) => item.kind === "facade")
+      .map((item) => item.facadeStyle),
+    ["storefront", "brick", "theater"],
+  );
+  const invalid = structuredClone(project);
+  invalid.scenes[0].items.find((item) => item.kind === "facade").facadeStyle =
+    "castle";
+  assert.equal(isProject(invalid), false);
 });
 
 test("project import rejects asset data without a GLB 2 header", () => {
