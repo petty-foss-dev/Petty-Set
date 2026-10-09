@@ -53,6 +53,7 @@ Open the address printed by Vite. Films, model files, reference images, floor-pl
 - Place a power distribution source, assign lights to it, set fixture loads and source capacity, and see cable runs and total load in the set plan.
 - Create shot-specific Plan A/B lighting alternatives, duplicate and rename plans, and preview each plan without changing the shared set or other shots.
 - Undo and redo project edits; duplicate, hide, and lock set objects.
+- Use ⌘/Ctrl+A to select visible unlocked objects, ⌘/Ctrl+D to duplicate, Delete to remove, and arrow keys to nudge selected objects by 0.25 m (Shift for 1 m). Shortcuts pause while editing a field.
 - Set actor positions, facing, and twelve mannequin joint angles per shot, then add an end mark and waypoints for each actor. Start from neutral, greeting, or pointing and fine tune the head, shoulders, elbows, hips, and knees with inspector sliders or by dragging amber joint handles in the 3D stage. Preview actor movement with the shot timeline in stage, plan, or camera view; the mannequin shows a simple walk swing during playback.
 - Search a small library of original procedural actor actions, assign an action per shot, and control its loop and speed. Actions can play while actors hold their marks.
 - Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity, or calibrate its scale by clicking two points with a known real-world distance.

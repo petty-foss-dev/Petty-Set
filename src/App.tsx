@@ -1079,6 +1079,59 @@ function Editor({
     if (shot?.cameraId === selected.id) resetMove();
   }
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as Element;
+      if (
+        target.closest("input, textarea, select, [contenteditable]") ||
+        layerEditor ||
+        showFilms ||
+        showExport ||
+        showAdd ||
+        event.altKey
+      )
+        return;
+      const modifier = event.metaKey || event.ctrlKey;
+      const key = event.key.toLowerCase();
+      if (modifier && key === "a") {
+        event.preventDefault();
+        const ids = stageScene.items
+          .filter((item) => !item.hidden && !item.locked)
+          .map((item) => item.id);
+        setSelectedIds(ids);
+        setPrimaryId(ids.at(-1));
+      } else if (modifier && key === "d" && selectedItems.length) {
+        event.preventDefault();
+        if (selectedItems.length > 1) duplicateSelection();
+        else duplicateSelected();
+      } else if (
+        !modifier &&
+        (key === "delete" || key === "backspace") &&
+        selectedItems.length
+      ) {
+        event.preventDefault();
+        if (selectedItems.length > 1) deleteSelection();
+        else deleteSelected();
+      } else if (!modifier && selectedItems.length && key.startsWith("arrow")) {
+        const step = event.shiftKey ? 1 : 0.25;
+        const delta = {
+          arrowleft: { x: -step, z: 0 },
+          arrowright: { x: step, z: 0 },
+          arrowup: { x: 0, z: -step },
+          arrowdown: { x: 0, z: step },
+        }[key];
+        if (!delta) return;
+        event.preventDefault();
+        positionSelection((item) => ({
+          x: item.x + delta.x,
+          z: item.z + delta.z,
+        }));
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
   function addShot() {
     const source = scene.items.find((item) => item.id === shot?.cameraId);
     const camera = {
