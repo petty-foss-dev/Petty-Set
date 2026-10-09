@@ -214,6 +214,8 @@ export interface Shot {
   notes: string;
   setup?: string;
   status?: "planned" | "ready" | "shot";
+  lightingPlans?: ShotLightingPlan[];
+  activeLightingPlanId?: string;
   frame?: string;
   reference?: { name: string; image: string };
   duration: number;
@@ -229,6 +231,17 @@ export interface Shot {
     height: number;
     rotation: number;
   }[];
+}
+
+export interface ShotLightingPlan {
+  id: string;
+  name: string;
+  fixtures: Record<
+    string,
+    Omit<Partial<SceneItem>, "powerSourceId"> & {
+      powerSourceId?: string | null;
+    }
+  >;
 }
 
 export interface SetScene {
@@ -493,6 +506,88 @@ export function isProject(value: unknown): value is Project {
             !shot.reference.image.startsWith("data:image/jpeg;base64,")))
       )
         return false;
+      if (shot.lightingPlans !== undefined) {
+        if (!Array.isArray(shot.lightingPlans) || !shot.lightingPlans.length)
+          return false;
+        const planIds = new Set<string>();
+        for (const plan of shot.lightingPlans) {
+          if (
+            !isRecord(plan) ||
+            !isString(plan.id) ||
+            planIds.has(plan.id) ||
+            !isString(plan.name) ||
+            !isRecord(plan.fixtures)
+          )
+            return false;
+          planIds.add(plan.id);
+          for (const [fixtureId, fixture] of Object.entries(plan.fixtures)) {
+            if (
+              items.get(fixtureId) !== "light" ||
+              !isRecord(fixture) ||
+              Object.keys(fixture).some(
+                (key) =>
+                  ![
+                    "x",
+                    "y",
+                    "z",
+                    "rotation",
+                    "height",
+                    "intensity",
+                    "lumens",
+                    "tilt",
+                    "spread",
+                    "color",
+                    "lightType",
+                    "powerWatts",
+                    "powerSourceId",
+                    "hidden",
+                  ].includes(key),
+              ) ||
+              [
+                "x",
+                "y",
+                "z",
+                "rotation",
+                "height",
+                "intensity",
+                "lumens",
+                "tilt",
+                "spread",
+                "powerWatts",
+              ].some(
+                (key) =>
+                  fixture[key] !== undefined && !isFiniteNumber(fixture[key]),
+              ) ||
+              (fixture.height !== undefined &&
+                (fixture.height as number) <= 0) ||
+              (fixture.lumens !== undefined &&
+                ((fixture.lumens as number) < 0 ||
+                  (fixture.lumens as number) > 100_000)) ||
+              (fixture.tilt !== undefined &&
+                ((fixture.tilt as number) < 5 ||
+                  (fixture.tilt as number) > 90)) ||
+              (fixture.powerWatts !== undefined &&
+                (fixture.powerWatts as number) <= 0) ||
+              (fixture.lightType !== undefined &&
+                !["softbox", "spot", "practical"].includes(
+                  fixture.lightType as string,
+                )) ||
+              (fixture.color !== undefined && !isString(fixture.color)) ||
+              (fixture.hidden !== undefined &&
+                typeof fixture.hidden !== "boolean") ||
+              (fixture.powerSourceId !== undefined &&
+                fixture.powerSourceId !== null &&
+                items.get(fixture.powerSourceId as string) !== "power")
+            )
+              return false;
+          }
+        }
+        if (
+          !isString(shot.activeLightingPlanId) ||
+          !planIds.has(shot.activeLightingPlanId)
+        )
+          return false;
+      } else if (shot.activeLightingPlanId !== undefined) return false;
       if (shot.actorMarks !== undefined) {
         if (!isRecord(shot.actorMarks)) return false;
         for (const [actorId, mark] of Object.entries(shot.actorMarks)) {

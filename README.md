@@ -50,26 +50,31 @@ Open the address printed by Vite. The app stores the current project in this bro
 - Import self-contained glTF 2.0 `.glb` assets up to 1 MB. Models are embedded in local project data and JSON exports; browser storage is capped at roughly 3 MB of project JSON.
 - Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Place a power distribution source, assign lights to it, set fixture loads and source capacity, and see cable runs and total load in the set plan.
+- Create shot-specific Plan A/B lighting alternatives, duplicate and rename plans, and preview each plan without changing the shared set or other shots.
 - Undo and redo project edits; duplicate, hide, and lock set objects.
 - Set actor positions, facing, and twelve mannequin joint angles per shot, then add an end mark and waypoints for each actor. Start from neutral, greeting, or pointing and fine tune the head, shoulders, elbows, hips, and knees with inspector sliders or by dragging amber joint handles in the 3D stage. Preview actor movement with the shot timeline in stage, plan, or camera view; the mannequin shows a simple walk swing during playback.
 - Search a small library of original procedural actor actions, assign an action per shot, and control its loop and speed. Actions can play while actors hold their marks.
 - Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity, or calibrate its scale by clicking two points with a known real-world distance.
 - Switch between orbiting 3D stage, top plan, and camera view.
 - Add shots with separate cameras; choose a sensor gate, focal length, aperture, focus distance, and shot aspect ratio. The camera view shows framing guides and approximate depth-of-field limits, with controls to switch directly between camera setups.
+- Export a clean camera still at 1280, 1920, or 2560 pixels wide using the shot's saved aspect ratio and lens field of view.
 - Arrange story and shoot order independently and export a shot-list CSV in either order.
 - Capture camera frames into the storyboard; edit shot notes and duration.
 - Export editable JSON, measured floor plan SVG, view PNG, and storyboard PDF.
+- Export current-shot and batch shoot-day PDF sheets, current-shot PNG and batch PNG ZIP sheets, a paginated shot-list PDF, and a fixture/power schedule PDF.
 
 ## Parity roadmap
 
 See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and build order.
 
+The [parity plan](docs/PARITY_PLAN.md) defines the implementation phases and acceptance gates.
+
 This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
 
 1. Modeling tools: irregular room drawing, collinear wall overlap handling, multiple openings per segment, room finishes, grouping, and a larger original asset catalog.
 2. Cinematography: named camera bodies and lenses, visual depth of field, curved camera paths, collision-aware movement, and take variants.
-3. Performance planning: inverse kinematics, a saved pose library, rigged animation assets, route timing/easing and collision checks, more lighting modifiers, editable cable routes, and alternate plans.
-4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.
+3. Performance planning: inverse kinematics, a saved pose library, rigged animation assets, route timing/easing and collision checks, more lighting modifiers and editable cable routes.
+4. Production outputs: richer board layouts and more print layout options.
 5. Collaboration: project accounts, shareable review links, comments, crew roles, editing, and branding. This requires an optional server; local projects should continue to work without one.
 
 ## References

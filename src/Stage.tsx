@@ -26,6 +26,11 @@ import type { AspectRatio } from "./cinematography";
 import { fixtureLumens, lightDirection, traceFloor } from "./lighting";
 
 export type ViewMode = "stage" | "plan" | "camera";
+export interface CaptureOptions {
+  width: number;
+  height: number;
+  fov: number;
+}
 
 function surfaceTexture(ground: "grass" | "asphalt" | "sand") {
   const palette = {
@@ -112,7 +117,9 @@ interface Props {
   onMoveCorner: (from: PlanPoint, to: PlanPoint) => void;
   calibrationPoints: PlanPoint[];
   onCalibrationPoint: (point: PlanPoint) => void;
-  captureRef: React.MutableRefObject<(() => string) | null>;
+  captureRef: React.MutableRefObject<
+    ((options?: CaptureOptions) => string) | null
+  >;
   moveProgress: number;
   lightTraceVisible: boolean;
   lightSample: PlanPoint | null;
@@ -1006,10 +1013,8 @@ export default function Stage(props: Props) {
       shadows={{ type: THREE.PCFShadowMap }}
       camera={{ position: [7.5, 6.6, 8.2], fov: 50 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
-      onCreated={({ gl }) => {
-        captureRef.current = () => gl.domElement.toDataURL("image/png");
-      }}
     >
+      <CaptureBridge captureRef={captureRef} />
       <color
         attach="background"
         args={[props.scene.environment?.skyColor ?? "#dce0de"]}
@@ -1017,4 +1022,33 @@ export default function Stage(props: Props) {
       <StageContent {...content} />
     </Canvas>
   );
+}
+
+function CaptureBridge({ captureRef }: Pick<Props, "captureRef">) {
+  const { gl, scene, camera } = useThree();
+  useEffect(() => {
+    captureRef.current = (options) => {
+      if (!options) return gl.domElement.toDataURL("image/png");
+      const originalSize = gl.getSize(new THREE.Vector2());
+      const originalRatio = gl.getPixelRatio();
+      const captureCamera = (camera as THREE.PerspectiveCamera).clone();
+      captureCamera.aspect = options.width / options.height;
+      captureCamera.fov = options.fov;
+      captureCamera.updateProjectionMatrix();
+      gl.setPixelRatio(1);
+      gl.setSize(options.width, options.height, false);
+      try {
+        gl.render(scene, captureCamera);
+        return gl.domElement.toDataURL("image/png");
+      } finally {
+        gl.setPixelRatio(originalRatio);
+        gl.setSize(originalSize.x, originalSize.y, false);
+        gl.render(scene, camera);
+      }
+    };
+    return () => {
+      captureRef.current = null;
+    };
+  }, [gl, scene, camera, captureRef]);
+  return null;
 }

@@ -42,7 +42,7 @@ import {
   X,
 } from "lucide-react";
 import Stage from "./Stage";
-import type { ViewMode } from "./Stage";
+import type { CaptureOptions, ViewMode } from "./Stage";
 import {
   extendRoom,
   backlotScene,
@@ -78,6 +78,11 @@ import {
   lightAimPoint,
   sampleFloorIlluminance,
 } from "./lighting";
+import {
+  lightingSnapshot,
+  resolveLightingPlan,
+  updateLightingFixture,
+} from "./lightingPlans";
 import { actorActions } from "./actorActions";
 import type { ActorAction } from "./actorActions";
 import {
@@ -147,6 +152,15 @@ function download(name: string, contents: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadBlob(name: string, contents: Blob) {
+  const url = URL.createObjectURL(contents);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function imageReference(file: File) {
   if (!file.type.startsWith("image/") || file.size > 12_000_000)
     throw new Error("Use image files smaller than 12 MB.");
@@ -179,6 +193,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [mode, setMode] = useState<ViewMode>("stage");
   const [lightTraceVisible, setLightTraceVisible] = useState(false);
+  const [stillWidth, setStillWidth] = useState(1920);
   const [lightSample, setLightSample] = useState<{
     sceneId: string;
     x: number;
@@ -201,7 +216,9 @@ function App() {
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
   const [moveProgress, setMoveProgress] = useState(0);
   const [playingMove, setPlayingMove] = useState(false);
-  const captureRef = useRef<(() => string) | null>(null);
+  const captureRef = useRef<((options?: CaptureOptions) => string) | null>(
+    null,
+  );
   const importRef = useRef<HTMLInputElement>(null);
   const floorplanRef = useRef<HTMLInputElement>(null);
   const assetRef = useRef<HTMLInputElement>(null);
@@ -213,9 +230,6 @@ function App() {
     project.scenes.find((value) => value.id === sceneId) ?? project.scenes[0];
   const currentLightSample =
     lightSample?.sceneId === scene.id ? lightSample : null;
-  const lightReading = currentLightSample
-    ? sampleFloorIlluminance(scene.items, currentLightSample)
-    : null;
   const shot =
     scene.shots.find((value) => value.id === shotId) ?? scene.shots[0];
   const environment: SceneEnvironment = scene.environment ?? {
@@ -224,23 +238,26 @@ function App() {
     sunAzimuth: 35,
     sunElevation: 55,
   };
-  const stageScene = useMemo(
-    () => ({
-      ...scene,
-      items: scene.items.map((item) =>
+  const stageScene = useMemo(() => {
+    const resolved = resolveLightingPlan(scene, shot);
+    return {
+      ...resolved,
+      items: resolved.items.map((item) =>
         item.kind === "actor" && shot?.actorMarks?.[item.id]
           ? { ...item, ...shot.actorMarks[item.id] }
           : item,
       ),
-    }),
-    [scene, shot],
-  );
+    };
+  }, [scene, shot]);
+  const lightReading = currentLightSample
+    ? sampleFloorIlluminance(stageScene.items, currentLightSample)
+    : null;
   const selected = stageScene.items.find((value) => value.id === selectedId);
   const planRoomList = useMemo(() => planRooms(scene.items), [scene.items]);
-  const selectedPowerSource = scene.items.find(
+  const selectedPowerSource = stageScene.items.find(
     (item) => item.id === selected?.powerSourceId,
   );
-  const selectedPowerLoads = scene.items.filter(
+  const selectedPowerLoads = stageScene.items.filter(
     (item) => item.powerSourceId === selected?.id,
   );
   const assignedWatts = selectedPowerLoads.reduce(
@@ -368,6 +385,29 @@ function App() {
 
   function updateItem(id: string, patch: Partial<SceneItem>) {
     const source = scene.items.find((item) => item.id === id);
+    if (
+      source?.kind === "light" &&
+      shot?.activeLightingPlanId &&
+      !source.locked &&
+      !["name", "width", "depth", "locked"].some((key) => key in patch)
+    ) {
+      updateScene((current) => ({
+        ...current,
+        shots: current.shots.map((entry) =>
+          entry.id === shot.id
+            ? {
+                ...entry,
+                lightingPlans: entry.lightingPlans?.map((plan) =>
+                  plan.id === entry.activeLightingPlanId
+                    ? updateLightingFixture(plan, source, patch)
+                    : plan,
+                ),
+              }
+            : entry,
+        ),
+      }));
+      return;
+    }
     if (
       source?.kind === "actor" &&
       shot &&
@@ -579,13 +619,24 @@ function App() {
       shots: current.shots
         .filter((value) => value.cameraId !== selected.id)
         .map((value) => {
+          const lightingPlans = value.lightingPlans?.map((plan) => {
+            const fixtures = { ...plan.fixtures };
+            delete fixtures[selected.id];
+            if (selected.kind === "power") {
+              for (const [fixtureId, fixture] of Object.entries(fixtures)) {
+                if (fixture.powerSourceId === selected.id)
+                  fixtures[fixtureId] = { ...fixture, powerSourceId: null };
+              }
+            }
+            return { ...plan, fixtures };
+          });
           if (
             !value.actorMarks?.[selected.id] &&
             !value.actorPaths?.[selected.id] &&
             !value.actorJoints?.[selected.id] &&
             !value.actorActions?.[selected.id]
           )
-            return value;
+            return { ...value, lightingPlans };
           const actorMarks = { ...value.actorMarks };
           const actorPaths = { ...value.actorPaths };
           const actorJoints = { ...value.actorJoints };
@@ -600,6 +651,7 @@ function App() {
             actorPaths,
             actorJoints,
             actorActions,
+            lightingPlans,
           };
         }),
       shootOrder: current.shootOrder.filter(
@@ -686,6 +738,29 @@ function App() {
         value.id === shot.id ? { ...value, ...patch } : value,
       ),
     }));
+  }
+
+  function addLightingPlan() {
+    if (!shot) return;
+    const fixtures = lightingSnapshot(stageScene.items);
+    if (!shot.lightingPlans?.length) {
+      const first = { id: id(), name: "Plan A", fixtures };
+      const second = { id: id(), name: "Plan B", fixtures };
+      updateShot({
+        lightingPlans: [first, second],
+        activeLightingPlanId: second.id,
+      });
+      return;
+    }
+    const next = {
+      id: id(),
+      name: `Plan ${String.fromCharCode(65 + shot.lightingPlans.length)}`,
+      fixtures,
+    };
+    updateShot({
+      lightingPlans: [...shot.lightingPlans, next],
+      activeLightingPlanId: next.id,
+    });
   }
 
   function updateShotById(shotId: string, patch: Partial<Shot>) {
@@ -926,6 +1001,165 @@ function App() {
     setShowExport(false);
   }
 
+  async function exportShootDayPDF(batch: boolean) {
+    const entries = batch ? orderedShots : shot ? [shot] : [];
+    if (!entries.length) return;
+    const [{ jsPDF }, { renderShootDaySheet }] = await Promise.all([
+      import("jspdf"),
+      import("./shootDay"),
+    ]);
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+    entries.forEach((entry, index) => {
+      if (index) pdf.addPage();
+      renderShootDaySheet(
+        pdf,
+        project.name,
+        scene,
+        entry,
+        index,
+        entries.length,
+      );
+    });
+    pdf.save(
+      `${project.name.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-${batch ? `${order}-batch` : "shot"}-shoot-day.pdf`,
+    );
+    setShowExport(false);
+  }
+
+  async function renderShootDayPNG(entry: Shot) {
+    const { shootDaySVG } = await import("./shootDay");
+    const url = URL.createObjectURL(
+      new Blob([shootDaySVG(project.name, scene, entry)], {
+        type: "image/svg+xml;charset=utf-8",
+      }),
+    );
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = 1600;
+      canvas.height = 1131;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Image export is unavailable.");
+      context.drawImage(image, 0, 0);
+      return await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (blob) =>
+            blob ? resolve(blob) : reject(new Error("Could not encode PNG.")),
+          "image/png",
+        ),
+      );
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function exportShootDayPNG() {
+    if (!shot) return;
+    try {
+      downloadBlob(
+        `${shot.title || "shot"}-shoot-day.png`,
+        await renderShootDayPNG(shot),
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Could not export the PNG.",
+      );
+    } finally {
+      setShowExport(false);
+    }
+  }
+
+  async function exportBatchShootDayPNG() {
+    if (!orderedShots.length) return;
+    try {
+      const { zipFiles } = await import("./zip");
+      const entries = [];
+      for (const [index, entry] of orderedShots.entries()) {
+        const png = await renderShootDayPNG(entry);
+        entries.push({
+          name: `${String(index + 1).padStart(3, "0")}-${entry.title.replace(/[^a-z0-9-]/gi, "-").toLowerCase() || "shot"}.png`,
+          bytes: new Uint8Array(await png.arrayBuffer()),
+        });
+      }
+      downloadBlob(
+        `${project.name.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-${order}-shoot-day-png.zip`,
+        new Blob([zipFiles(entries)], { type: "application/zip" }),
+      );
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Could not export the PNG batch.",
+      );
+    } finally {
+      setShowExport(false);
+    }
+  }
+
+  async function exportShotListPDF() {
+    const [{ jsPDF }, { renderShotListPDF }] = await Promise.all([
+      import("jspdf"),
+      import("./shotListPDF"),
+    ]);
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+    renderShotListPDF(pdf, project.name, scene, orderedShots, order);
+    pdf.save(
+      `${project.name.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-${order}-shot-list.pdf`,
+    );
+    setShowExport(false);
+  }
+
+  async function exportEquipmentPDF() {
+    if (!shot) return;
+    const [{ jsPDF }, { renderEquipmentPDF }] = await Promise.all([
+      import("jspdf"),
+      import("./equipmentPDF"),
+    ]);
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "a4",
+    });
+    renderEquipmentPDF(pdf, project.name, scene, shot);
+    pdf.save(
+      `${project.name.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-equipment-power.pdf`,
+    );
+    setShowExport(false);
+  }
+
+  function exportCameraStill() {
+    if (!shot || !cameraItem || mode !== "camera" || !captureRef.current)
+      return;
+    const ratio = aspectRatios[shot.aspectRatio ?? "16:9"];
+    const height = 2 * Math.round(stillWidth / ratio / 2);
+    const fov = cameraOptics(
+      cameraItem.sensor ?? "super35",
+      cameraItem.focalLength ?? 35,
+      cameraItem.aperture ?? 2.8,
+      cameraItem.focusDistance ?? 3,
+      shot.aspectRatio ?? "16:9",
+    ).verticalFov;
+    const image = captureRef.current({ width: stillWidth, height, fov });
+    const bytes = Uint8Array.from(atob(image.split(",")[1]), (char) =>
+      char.charCodeAt(0),
+    );
+    downloadBlob(
+      `${shot.title.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}-${stillWidth}x${height}.png`,
+      new Blob([bytes], { type: "image/png" }),
+    );
+    setShowExport(false);
+  }
+
   async function importProject(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1080,7 +1314,7 @@ function App() {
               onClick={() => {
                 download(
                   `${scene.name || "scene"}-floor-plan.svg`,
-                  floorplanSVG(scene),
+                  floorplanSVG(stageScene),
                   "image/svg+xml;charset=utf-8",
                 );
                 setShowExport(false);
@@ -1105,6 +1339,28 @@ function App() {
               <FileText size={16} /> Storyboard PDF{" "}
               <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
             </button>
+            <button disabled={!shot} onClick={() => exportShootDayPDF(false)}>
+              <FileText size={16} /> Current shot sheet PDF
+              <small>Plan, marks, camera, lights and power</small>
+            </button>
+            <button disabled={!shot} onClick={exportShootDayPNG}>
+              <FileImage size={16} /> Current shot sheet PNG
+              <small>1600 × 1131 image</small>
+            </button>
+            <button
+              disabled={!orderedShots.length}
+              onClick={() => exportShootDayPDF(true)}
+            >
+              <FileText size={16} /> Batch shot sheets PDF
+              <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
+            </button>
+            <button
+              disabled={!orderedShots.length}
+              onClick={exportBatchShootDayPNG}
+            >
+              <FileImage size={16} /> Batch shot sheets PNG
+              <small>{order === "shoot" ? "Shoot" : "Story"} order · ZIP</small>
+            </button>
             <button
               onClick={() => {
                 download(
@@ -1117,6 +1373,32 @@ function App() {
             >
               <FileText size={16} /> Shot list CSV{" "}
               <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
+            </button>
+            <button onClick={exportShotListPDF}>
+              <FileText size={16} /> Shot list PDF{" "}
+              <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
+            </button>
+            <button disabled={!shot} onClick={exportEquipmentPDF}>
+              <FileText size={16} /> Equipment & power PDF
+              <small>Current shot · all fixtures</small>
+            </button>
+            <label className="still-size-field">
+              Camera still width
+              <select
+                value={stillWidth}
+                onChange={(event) => setStillWidth(Number(event.target.value))}
+              >
+                <option value="1280">1280 px</option>
+                <option value="1920">1920 px</option>
+                <option value="2560">2560 px</option>
+              </select>
+            </label>
+            <button
+              disabled={mode !== "camera" || !shot}
+              onClick={exportCameraStill}
+            >
+              <FileImage size={16} /> Clean camera still PNG
+              <small>Shot aspect · select Camera view</small>
             </button>
             <button
               onClick={() => {
@@ -1710,7 +1992,7 @@ function App() {
           </div>
           <div className="stage-wrap">
             <Stage
-              scene={scene}
+              scene={stageScene}
               shot={shot}
               selectedId={moveProgress > 0 ? undefined : selectedId}
               mode={mode}
@@ -3143,6 +3425,95 @@ function App() {
                   <option value="shot">Shot</option>
                 </select>
               </label>
+              <div className="lighting-plan-controls">
+                <strong>LIGHTING ALTERNATIVES</strong>
+                {shot.lightingPlans?.length ? (
+                  <>
+                    <select
+                      aria-label="Lighting plan"
+                      value={shot.activeLightingPlanId}
+                      onChange={(event) =>
+                        updateShot({ activeLightingPlanId: event.target.value })
+                      }
+                    >
+                      {shot.lightingPlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      aria-label="Lighting plan name"
+                      value={
+                        shot.lightingPlans.find(
+                          (plan) => plan.id === shot.activeLightingPlanId,
+                        )?.name ?? ""
+                      }
+                      onChange={(event) =>
+                        updateShot({
+                          lightingPlans: shot.lightingPlans?.map((plan) =>
+                            plan.id === shot.activeLightingPlanId
+                              ? { ...plan, name: event.target.value }
+                              : plan,
+                          ),
+                        })
+                      }
+                    />
+                  </>
+                ) : (
+                  <p>Save two independent lighting setups for this shot.</p>
+                )}
+                <button onClick={addLightingPlan}>
+                  <Plus size={14} />{" "}
+                  {shot.lightingPlans?.length
+                    ? "Duplicate current plan"
+                    : "Create Plan A + B"}
+                </button>
+                {shot.lightingPlans && (
+                  <div className="lighting-plan-compare">
+                    <table aria-label="Compare lighting plans">
+                      <thead>
+                        <tr>
+                          <th>Fixture</th>
+                          {shot.lightingPlans.map((plan) => (
+                            <th key={plan.id}>{plan.name}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scene.items
+                          .filter((item) => item.kind === "light")
+                          .map((light) => (
+                            <tr key={light.id}>
+                              <th>{light.name}</th>
+                              {shot.lightingPlans!.map((plan) => {
+                                const fixture = plan.fixtures[light.id] ?? {};
+                                const output = fixtureLumens({
+                                  ...light,
+                                  ...fixture,
+                                  powerSourceId: light.powerSourceId,
+                                });
+                                return (
+                                  <td key={plan.id}>
+                                    <b>
+                                      {(fixture.hidden ?? light.hidden)
+                                        ? "Off"
+                                        : `${Math.round(output)} lm`}
+                                    </b>
+                                    <small>
+                                      {(fixture.x ?? light.x).toFixed(1)},{" "}
+                                      {(fixture.z ?? light.z).toFixed(1)} m
+                                    </small>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
               <div className="shot-reference-actions">
                 <button onClick={() => shotReferenceRef.current?.click()}>
                   <FileImage size={15} />{" "}

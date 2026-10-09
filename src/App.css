@@ -132,6 +132,8 @@
   right: 20px;
   top: 56px;
   width: 230px;
+  max-height: calc(100vh - 68px);
+  overflow-y: auto;
   padding: 7px;
 }
 .export-menu button {
@@ -155,6 +157,21 @@
   color: #939997;
   font-size: 10px;
   margin-top: 2px;
+}
+.export-menu .still-size-field {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  color: #6f7674;
+  font-size: 10px;
+}
+.export-menu .still-size-field select {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #d9dbd7;
+  border-radius: 5px;
+  background: #fff;
+  color: #303536;
 }
 .workspace {
   display: grid;
@@ -635,6 +652,67 @@
 .light-meter li b {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+.lighting-plan-controls {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid #dfd1bb;
+  border-radius: 6px;
+  background: #faf5eb;
+}
+.lighting-plan-controls strong {
+  color: #80613b;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+.lighting-plan-controls p {
+  margin: 0;
+  color: #6e6c64;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.lighting-plan-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid #c4a77b;
+  border-radius: 5px;
+  background: #fffaf1;
+  color: #664b2a;
+  font-size: 11px;
+  font-weight: 700;
+}
+.lighting-plan-compare {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.lighting-plan-compare table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.lighting-plan-compare th,
+.lighting-plan-compare td {
+  min-width: 65px;
+  padding: 5px 4px;
+  border-bottom: 1px solid #e5d9c5;
+  text-align: left;
+  vertical-align: top;
+}
+.lighting-plan-compare th:first-child {
+  min-width: 60px;
+  max-width: 85px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lighting-plan-compare td small {
+  display: block;
+  margin-top: 2px;
+  color: #786d5e;
+  white-space: nowrap;
 }
 .shot-panel-heading {
   display: flex;

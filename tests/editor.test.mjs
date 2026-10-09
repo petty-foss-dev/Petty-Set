@@ -25,6 +25,13 @@ import {
   traceFloor,
 } from "../src/lighting.ts";
 import {
+  lightingSnapshot,
+  resolveLightingPlan,
+  updateLightingFixture,
+} from "../src/lightingPlans.ts";
+import { shootDaySVG } from "../src/shootDay.ts";
+import { zipFiles } from "../src/zip.ts";
+import {
   floorplanSVG,
   canSplitWall,
   calibratedPlacement,
@@ -509,6 +516,75 @@ test("light meter totals visible fixtures and reports occluded contributions", (
     blocked.total,
     blocked.contributors.find((light) => light.id === "near").lux,
   );
+});
+
+test("shot lighting plans keep alternatives independent through project export", () => {
+  const project = sampleProject();
+  const scene = project.scenes[0];
+  const shot = scene.shots[0];
+  const light = scene.items.find((item) => item.kind === "light");
+  const baseLumens = light.lumens ?? (light.intensity ?? 2) * 600;
+  const first = {
+    id: "plan-a",
+    name: "Plan A",
+    fixtures: lightingSnapshot(scene.items),
+  };
+  const second = updateLightingFixture(
+    { ...first, id: "plan-b", name: "Plan B" },
+    light,
+    { lumens: baseLumens + 500, x: light.x + 2 },
+  );
+  shot.lightingPlans = [first, second];
+  shot.activeLightingPlanId = second.id;
+  assert.equal(
+    resolveLightingPlan(scene, shot).items.find((item) => item.id === light.id)
+      .lumens,
+    baseLumens + 500,
+  );
+  assert.equal(scene.items.find((item) => item.id === light.id).x, light.x);
+  shot.activeLightingPlanId = first.id;
+  assert.equal(
+    resolveLightingPlan(scene, shot).items.find((item) => item.id === light.id)
+      .x,
+    light.x,
+  );
+  assert.ok(isProject(JSON.parse(JSON.stringify(project))));
+  shot.activeLightingPlanId = "missing";
+  assert.equal(isProject(project), false);
+  shot.activeLightingPlanId = first.id;
+  first.fixtures[scene.items.find((item) => item.kind === "camera").id] = {
+    lumens: 500,
+  };
+  assert.equal(isProject(project), false);
+});
+
+test("shot sheet uses the active lighting alternative", () => {
+  const project = sampleProject();
+  const scene = project.scenes[0];
+  const shot = scene.shots[0];
+  const light = scene.items.find((item) => item.kind === "light");
+  const plan = updateLightingFixture(
+    { id: "plan-b", name: "Plan B", fixtures: lightingSnapshot(scene.items) },
+    light,
+    { lumens: 1800 },
+  );
+  shot.lightingPlans = [plan];
+  shot.activeLightingPlanId = plan.id;
+  const svg = shootDaySVG("Film & crew", scene, shot);
+  assert.match(svg, /Film &amp; crew/);
+  assert.match(svg, /Plan B/);
+  assert.match(svg, /1800 lm/);
+});
+
+test("batch PNG archive writes valid ZIP headers and CRC", () => {
+  const archive = zipFiles([
+    { name: "shot.png", bytes: new TextEncoder().encode("123456789") },
+  ]);
+  const view = new DataView(archive.buffer);
+  assert.equal(view.getUint32(0, true), 0x04034b50);
+  assert.equal(view.getUint32(14, true), 0xcbf43926);
+  assert.equal(view.getUint32(archive.length - 22, true), 0x06054b50);
+  assert.equal(view.getUint16(archive.length - 12, true), 1);
 });
 
 test("fixture photometry rejects invalid output and tilt", () => {
