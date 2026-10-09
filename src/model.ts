@@ -24,6 +24,10 @@ export type ItemKind =
   | "box"
   | "sofa"
   | "shelf"
+  | "bed"
+  | "cabinet"
+  | "deskLamp"
+  | "monitor"
   | "plant"
   | "rug"
   | "tree"
@@ -442,6 +446,10 @@ const itemKinds: ItemKind[] = [
   "box",
   "sofa",
   "shelf",
+  "bed",
+  "cabinet",
+  "deskLamp",
+  "monitor",
   "plant",
   "rug",
   "tree",
@@ -1027,6 +1035,20 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
       return { ...base, width: 2, height: 0.85, depth: 0.9 };
     case "shelf":
       return { ...base, width: 1.4, height: 2, depth: 0.4 };
+    case "bed":
+      return { ...base, width: 2, height: 0.85, depth: 2.2 };
+    case "cabinet":
+      return { ...base, width: 1.2, height: 1.7, depth: 0.55 };
+    case "deskLamp":
+      return {
+        ...base,
+        name: `Desk lamp ${count}`,
+        width: 0.45,
+        height: 0.65,
+        depth: 0.45,
+      };
+    case "monitor":
+      return { ...base, width: 0.8, height: 0.6, depth: 0.25 };
     case "plant":
       return { ...base, width: 0.7, height: 1.6, depth: 0.7 };
     case "rug":

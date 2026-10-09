@@ -9,6 +9,7 @@ import {
 import type { ChangeEvent, SetStateAction } from "react";
 import {
   Camera,
+  BedDouble,
   Check,
   ChevronDown,
   Clapperboard,
@@ -26,6 +27,7 @@ import {
   Lock,
   LockOpen,
   Menu,
+  Monitor,
   Move3D,
   MousePointer2,
   PenLine,
@@ -161,6 +163,10 @@ const itemIcons: Record<ItemKind, typeof Square> = {
   box: Square,
   sofa: Sofa,
   shelf: BookOpen,
+  bed: BedDouble,
+  cabinet: BoxIcon,
+  deskLamp: LampDesk,
+  monitor: Monitor,
   plant: Flower2,
   rug: RectangleHorizontal,
   tree: Flower2,
@@ -183,6 +189,10 @@ const itemNames: Record<ItemKind, string> = {
   box: "Block",
   sofa: "Sofa",
   shelf: "Bookcase",
+  bed: "Bed",
+  cabinet: "Cabinet",
+  deskLamp: "Desk lamp",
+  monitor: "Monitor",
   plant: "Plant",
   rug: "Rug",
   tree: "Tree",
@@ -3662,6 +3672,51 @@ function Editor({
                         }[
                           selected.kind as
                             "tree" | "bench" | "vehicle" | "ground"
+                        ]
+                      }
+                      onChange={(event) =>
+                        updateItem(selected.id, { color: event.target.value })
+                      }
+                    />
+                  </label>
+                )}
+                {(
+                  [
+                    "table",
+                    "chair",
+                    "sofa",
+                    "shelf",
+                    "bed",
+                    "cabinet",
+                    "deskLamp",
+                    "monitor",
+                  ] as ItemKind[]
+                ).includes(selected.kind) && (
+                  <label className="full-field">
+                    <span>Primary finish</span>
+                    <input
+                      type="color"
+                      value={
+                        selected.color ??
+                        {
+                          table: "#8b6548",
+                          chair: "#8b6548",
+                          sofa: "#a9a696",
+                          shelf: "#8b6548",
+                          bed: "#8e584e",
+                          cabinet: "#76583f",
+                          deskLamp: "#476654",
+                          monitor: "#242727",
+                        }[
+                          selected.kind as
+                            | "table"
+                            | "chair"
+                            | "sofa"
+                            | "shelf"
+                            | "bed"
+                            | "cabinet"
+                            | "deskLamp"
+                            | "monitor"
                         ]
                       }
                       onChange={(event) =>

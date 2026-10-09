@@ -6,6 +6,7 @@ import type { MannequinJoints, SceneItem } from "./model";
 import Mannequin from "./Mannequin";
 import { Bench, Tree, Vehicle } from "./OutdoorAssets";
 import { Barrel, Facade, Streetlamp, Surface } from "./BacklotAssets";
+import { Bed, Cabinet, DeskLamp, Monitor } from "./InteriorAssets";
 import PowerSource from "./PowerSource";
 
 const ImportedAsset = lazy(() => import("./ImportedAsset"));
@@ -334,9 +335,10 @@ function Wall({ item }: { item: SceneItem }) {
 
 function Table({ item }: { item: SceneItem }) {
   const { width: w, height: h, depth: d } = item;
+  const finish = item.color ?? wood;
   return (
     <group>
-      <Box position={[0, h - 0.045, 0]} size={[w, 0.09, d]} color={wood} />
+      <Box position={[0, h - 0.045, 0]} size={[w, 0.09, d]} color={finish} />
       <Box
         position={[0, h - 0.13, 0]}
         size={[w - 0.17, 0.12, d - 0.17]}
@@ -382,13 +384,14 @@ function Table({ item }: { item: SceneItem }) {
 function Chair({ item }: { item: SceneItem }) {
   const w = item.width,
     d = item.depth;
+  const finish = item.color ?? wood;
   return (
     <group>
-      <Box position={[0, 0.44, 0]} size={[w, 0.12, d]} color={wood} />
+      <Box position={[0, 0.44, 0]} size={[w, 0.12, d]} color={finish} />
       <Box
         position={[0, 0.72, -d / 2 + 0.05]}
         size={[w, 0.52, 0.1]}
-        color={wood}
+        color={finish}
       />
       <Box
         position={[0, 0.51, 0]}
@@ -412,20 +415,21 @@ function Chair({ item }: { item: SceneItem }) {
 function Sofa({ item }: { item: SceneItem }) {
   const w = item.width,
     d = item.depth;
+  const upholstery = item.color ?? linen;
   return (
     <group>
       <Box position={[0, 0.3, 0]} size={[w, 0.36, d]} color="#716f62" />
       <Box
         position={[0, 0.67, -d / 2 + 0.1]}
         size={[w, 0.36, 0.2]}
-        color={linen}
+        color={upholstery}
       />
       {[-1, 1].map((side) => (
         <group key={side}>
           <Box
             position={[side * (w / 2 - 0.11), 0.55, 0]}
             size={[0.22, 0.38, d]}
-            color={linen}
+            color={upholstery}
           />
           <Box
             position={[side * (w / 4), 0.53, 0.08]}
@@ -447,6 +451,7 @@ function Shelf({ item }: { item: SceneItem }) {
   const w = item.width,
     h = item.height,
     d = item.depth;
+  const finish = item.color ?? wood;
   return (
     <group>
       {[-1, 1].map((x) => (
@@ -460,7 +465,12 @@ function Shelf({ item }: { item: SceneItem }) {
       {[0.06, 0.48, 0.9, 1.32, 1.74]
         .filter((y) => y < h)
         .map((y) => (
-          <Box key={y} position={[0, y, 0]} size={[w, 0.07, d]} color={wood} />
+          <Box
+            key={y}
+            position={[0, y, 0]}
+            size={[w, 0.07, d]}
+            color={finish}
+          />
         ))}
       {[0.48, 0.9, 1.32]
         .filter((y) => y < h)
@@ -752,6 +762,14 @@ export default function SetPiece({
       return <Sofa item={item} />;
     case "shelf":
       return <Shelf item={item} />;
+    case "bed":
+      return <Bed item={item} />;
+    case "cabinet":
+      return <Cabinet item={item} />;
+    case "deskLamp":
+      return <DeskLamp item={item} />;
+    case "monitor":
+      return <Monitor item={item} />;
     case "plant":
       return <Plant item={item} />;
     case "camera":

@@ -42,7 +42,7 @@ Open the address printed by Vite. Films, model files, reference images, floor-pl
 ## Current features
 
 - A local film library with separate autosave, create, switch, rename, delete, and portable import/export for each film. Each film has multiple scenes with separate editable 3D sets.
-- Draw walls on a quarter-meter grid with endpoint and edge snapping, drag out rectangular rooms, move shared corners, split walls, and add framed doorways and windows. Interior partitions split wall intersections and divide measured rooms. Closed outlines form individual 3D floors; plan view labels wall lengths and room areas. Position blocks, tables, chairs, sofas, bookcases, plants, rugs, wooden drawing mannequins with visible joints and neutral, greeting, or pointing poses, camera tripods, and softbox lights. Edit dimensions, rotation, camera focal length, and light intensity, spread, and color.
+- Draw walls on a quarter-meter grid with endpoint and edge snapping, drag out rectangular rooms, move shared corners, split walls, and add framed doorways and windows. Interior partitions split wall intersections and divide measured rooms. Closed outlines form individual 3D floors; plan view labels wall lengths and room areas. Position blocks, tables, chairs, sofas, bookcases, beds, cabinets, desk lamps, monitors, plants, rugs, wooden drawing mannequins with visible joints and neutral, greeting, or pointing poses, camera tripods, and softbox lights. Edit dimensions, rotation, primary furniture finish, camera focal length, and light intensity, spread, and color.
 - Add a furnished sample scene with connected rooms, two camera setups, actor actions, and a lighting power source without replacing the current scene. All sample objects remain editable.
 - Build an outdoor scene with grass, asphalt, sand, or studio ground; set sky color and sun direction/elevation; add original trees, park benches, vehicles, and paved ground patches. An exterior sample scene demonstrates the catalog.
 - Dress a stylized backlot street with editable storefront, brick, and theater facades, custom sign text, detailed streetlamps and barrels, road markings, scored sidewalks, curbs, and wooden actors. The Main Street sample includes an actor route, a greeting pose, and a camera shot. The editor uses a warm studio palette inspired by classic movie-making games; all scene geometry and styling are original.
@@ -73,7 +73,7 @@ The [parity plan](docs/PARITY_PLAN.md) defines the implementation phases and acc
 This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
 
 1. Modeling tools: richer material controls, tracing over imported floor plans, rotation and grouping tools, and a larger original asset catalog.
-2. Cinematography: visual depth of field, curved camera paths, collision-aware movement, and take variants.
+2. Cinematography: visual depth of field, automatic camera collision avoidance, and take variants.
 3. Performance planning: inverse kinematics, rigged animation assets, route collision checks, more lighting modifiers and editable cable routes.
 4. Production outputs: richer board layouts and more print layout options.
 5. Collaboration: optional project accounts, shareable review links, comments, crew roles, editing, and branding.
