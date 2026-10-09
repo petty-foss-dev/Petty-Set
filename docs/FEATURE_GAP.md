@@ -31,6 +31,8 @@ petty: set already has an editable 3D stage with drawn walls, rectangular room c
 
 ## Build order
 
+Shot motion now supports saved joint pose keys, light position/aim keys, and actor targeting for cameras and lights on the shared playback timeline. Actors can walk along weighted routes while poses interpolate. The light preview and floor meter use the light's position at the current playhead. These are editable planning animations; full rigged motion, inverse kinematics, physical camera rigs, and production light profiles remain gaps.
+
 The named camera gates come from [ARRI's ALEXA 35 active image areas](https://www.arri.com/en/cine-systems/cine-cameras/legacy-cine-cameras/alexa-35), [Sony's FX3 sensor specifications](https://www.sony.com/electronics/support/camcorders-and-video-cameras-interchangeable-lens-camcorders/ilme-fx3/specifications), and [Blackmagic's Pocket Cinema Camera 6K Pro specifications](https://www.blackmagicdesign.com/products/blackmagicpocketcinemacamera/techspecs). The lens focal lengths, T ratings and close-focus distances come from [ZEISS CP.3 technical data](https://www.zeiss.com/photonics-and-optics/en/cinematography/lenses/compact-prime-cp-3-lenses.html). T-stop is transmission metadata and is kept separate from the f-number used for the approximate depth-of-field calculation; physical lens mount combinations still require a production check.
 
 1. **Editor foundation (P0):** shaped room drawing, collinear overlap handling, multiple wall openings, batch selection, finishes and named layers are available; next add reliable per-shot scene state beyond actors and contextual tool and shot-navigation shortcuts.

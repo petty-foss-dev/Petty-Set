@@ -78,6 +78,20 @@ export interface SavedPose {
   joints: MannequinJoints;
 }
 
+export interface PoseKeyframe {
+  at: number;
+  joints: MannequinJoints;
+}
+
+export interface LightKeyframe {
+  at: number;
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  tilt: number;
+}
+
 export const mannequinJointControls: {
   key: keyof MannequinJoints;
   label: string;
@@ -366,7 +380,11 @@ export interface Shot {
   actorMarks?: Record<string, ActorMark>;
   actorPaths?: Record<string, ActorPath>;
   actorJoints?: Record<string, MannequinJoints>;
+  actorPoseKeys?: Record<string, PoseKeyframe[]>;
   actorActions?: Record<string, ActorAction>;
+  lightKeys?: Record<string, LightKeyframe[]>;
+  lightTargetActors?: Record<string, string>;
+  cameraTargetActorId?: string;
   cameraEnd?: { x: number; z: number; height: number; rotation: number };
   cameraMoveStyle?: "linear" | "smooth";
   cameraWaypoints?: {
@@ -908,6 +926,65 @@ export function isProject(value: unknown): value is Project {
             return false;
         }
       }
+      if (shot.actorPoseKeys !== undefined) {
+        if (!isRecord(shot.actorPoseKeys)) return false;
+        for (const [actorId, keys] of Object.entries(shot.actorPoseKeys)) {
+          if (
+            items.get(actorId) !== "actor" ||
+            !Array.isArray(keys) ||
+            !keys.length ||
+            !keys.every(
+              (key, index) =>
+                isRecord(key) &&
+                isFiniteNumber(key.at) &&
+                key.at >= 0 &&
+                key.at <= 1 &&
+                (index === 0 || key.at > keys[index - 1].at) &&
+                isMannequinJoints(key.joints),
+            )
+          )
+            return false;
+        }
+      }
+      if (shot.lightKeys !== undefined) {
+        if (!isRecord(shot.lightKeys)) return false;
+        for (const [lightId, keys] of Object.entries(shot.lightKeys)) {
+          if (
+            items.get(lightId) !== "light" ||
+            !Array.isArray(keys) ||
+            !keys.length ||
+            !keys.every(
+              (key, index) =>
+                isRecord(key) &&
+                isFiniteNumber(key.at) &&
+                key.at >= 0 &&
+                key.at <= 1 &&
+                (index === 0 || key.at > keys[index - 1].at) &&
+                ["x", "y", "z", "rotation", "tilt"].every((field) =>
+                  isFiniteNumber(key[field]),
+                ) &&
+                (key.tilt as number) >= 5 &&
+                (key.tilt as number) <= 90,
+            )
+          )
+            return false;
+        }
+      }
+      if (
+        shot.lightTargetActors !== undefined &&
+        (!isRecord(shot.lightTargetActors) ||
+          Object.entries(shot.lightTargetActors).some(
+            ([lightId, actorId]) =>
+              items.get(lightId) !== "light" ||
+              items.get(actorId as string) !== "actor",
+          ))
+      )
+        return false;
+      if (
+        shot.cameraTargetActorId !== undefined &&
+        items.get(shot.cameraTargetActorId as string) !== "actor"
+      )
+        return false;
       if (shot.actorActions !== undefined) {
         if (!isRecord(shot.actorActions)) return false;
         for (const [actorId, action] of Object.entries(shot.actorActions)) {
@@ -1084,6 +1161,63 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
     case "asset":
       return { ...base, width: 1, height: 1, depth: 1 };
   }
+}
+
+export function keyedPoseAt(
+  keys: PoseKeyframe[],
+  progress: number,
+): MannequinJoints {
+  const { from, to, fraction } = keySegment(keys, progress);
+  return Object.fromEntries(
+    mannequinJointControls.map(({ key }) => [
+      key,
+      from.joints[key] + (to.joints[key] - from.joints[key]) * fraction,
+    ]),
+  ) as unknown as MannequinJoints;
+}
+
+export function keyedLightAt(
+  keys: LightKeyframe[],
+  progress: number,
+): Omit<LightKeyframe, "at"> {
+  const { from, to, fraction } = keySegment(keys, progress);
+  const angle = ((((to.rotation - from.rotation) % 360) + 540) % 360) - 180;
+  return {
+    x: from.x + (to.x - from.x) * fraction,
+    y: from.y + (to.y - from.y) * fraction,
+    z: from.z + (to.z - from.z) * fraction,
+    rotation: from.rotation + angle * fraction,
+    tilt: from.tilt + (to.tilt - from.tilt) * fraction,
+  };
+}
+
+export function aimYaw(
+  from: Pick<SceneItem, "x" | "z">,
+  target: Pick<SceneItem, "x" | "z">,
+) {
+  return (Math.atan2(from.x - target.x, from.z - target.z) * 180) / Math.PI;
+}
+
+export function aimLightAtActor(light: SceneItem, actor: SceneItem) {
+  const horizontal = Math.hypot(actor.x - light.x, actor.z - light.z);
+  const vertical = light.y + light.height - (actor.y + actor.height * 0.7);
+  return {
+    rotation: aimYaw(light, actor),
+    tilt: Math.min(
+      90,
+      Math.max(5, (Math.atan2(vertical, horizontal) * 180) / Math.PI),
+    ),
+  };
+}
+
+function keySegment<T extends { at: number }>(keys: T[], progress: number) {
+  const toIndex = keys.findIndex((key) => key.at >= progress);
+  if (toIndex === -1)
+    return { from: keys.at(-1)!, to: keys.at(-1)!, fraction: 0 };
+  if (toIndex <= 0) return { from: keys[0], to: keys[0], fraction: 0 };
+  const from = keys[toIndex - 1];
+  const to = keys[toIndex];
+  return { from, to, fraction: (progress - from.at) / (to.at - from.at) };
 }
 
 export function actorPoseAt(

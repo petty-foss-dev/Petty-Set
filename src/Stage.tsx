@@ -11,6 +11,7 @@ import {
 import * as THREE from "three";
 import {
   actorPoseAt,
+  keyedPoseAt,
   cameraPoseAt,
   mannequinJointsForPose,
   snapWallPoint,
@@ -336,6 +337,7 @@ function CameraRig({
   mode,
   poseTarget,
   cameraItem,
+  targetActor,
   aspectRatio,
   shot,
   moveProgress,
@@ -343,6 +345,7 @@ function CameraRig({
   mode: ViewMode;
   poseTarget?: SceneItem;
   cameraItem?: SceneItem;
+  targetActor?: SceneItem;
   aspectRatio: AspectRatio;
   shot?: Shot;
   moveProgress: number;
@@ -387,12 +390,27 @@ function CameraRig({
       180) /
     Math.PI;
   const pose = cameraPoseAt(cameraItem, shot ?? {}, moveProgress);
-  const yaw = (pose.rotation * Math.PI) / 180;
+  const position = new THREE.Vector3(pose.x, pose.height, pose.z);
+  const orientation = targetActor
+    ? new THREE.Quaternion().setFromRotationMatrix(
+        new THREE.Matrix4().lookAt(
+          position,
+          new THREE.Vector3(
+            targetActor.x,
+            targetActor.y + targetActor.height * 0.7,
+            targetActor.z,
+          ),
+          new THREE.Vector3(0, 1, 0),
+        ),
+      )
+    : new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(0, (pose.rotation * Math.PI) / 180, 0),
+      );
   return (
     <PerspectiveCamera
       makeDefault
       position={[pose.x, pose.height, pose.z]}
-      rotation={[0, yaw, 0]}
+      quaternion={orientation}
       fov={fov}
       near={0.05}
       far={500}
@@ -403,6 +421,7 @@ function CameraRig({
 function SelectedObject({
   item,
   actorJoints,
+  walkPhase,
   poseMode,
   mode,
   transformMode,
@@ -413,6 +432,7 @@ function SelectedObject({
 }: {
   item: SceneItem;
   actorJoints?: MannequinJoints;
+  walkPhase?: number;
   poseMode: boolean;
   mode: ViewMode;
   transformMode: "translate" | "rotate";
@@ -474,7 +494,7 @@ function SelectedObject({
         onSelect(item.id, event.nativeEvent.shiftKey);
       }}
     >
-      <SetPiece item={item} actorJoints={actorJoints} />
+      <SetPiece item={item} actorJoints={actorJoints} walkPhase={walkPhase} />
       <mesh
         position={[0, Math.max(0.3, item.height / 2), 0]}
         raycast={() => null}
@@ -940,6 +960,8 @@ function StageContent({
     : undefined;
   const jointsAt = (item: SceneItem) => {
     if (item.kind !== "actor") return undefined;
+    const keys = shot?.actorPoseKeys?.[item.id];
+    if (keys?.length) return keyedPoseAt(keys, moveProgress);
     const base =
       shot?.actorJoints?.[item.id] ??
       item.mannequinJoints ??
@@ -1077,6 +1099,9 @@ function StageContent({
         mode={mode}
         poseTarget={poseTarget}
         cameraItem={cameraItem}
+        targetActor={visualItems.find(
+          (item) => item.id === shot?.cameraTargetActorId,
+        )}
         aspectRatio={shot?.aspectRatio ?? "16:9"}
         shot={shot}
         moveProgress={moveProgress}
@@ -1434,7 +1459,7 @@ function StageContent({
         </group>
       )}
       {mode === "plan" && lightTraceVisible && (
-        <LightTraceOverlay items={scene.items} />
+        <LightTraceOverlay items={visualItems} />
       )}
       {mode === "plan" && lightTraceVisible && lightSample && (
         <group position={[lightSample.x, 0.045, lightSample.z]}>
@@ -1501,6 +1526,11 @@ function StageContent({
               key={`${shot?.id ?? "scene"}-${item.id}`}
               item={item}
               actorJoints={jointsAt(item)}
+              walkPhase={
+                shot?.actorPaths?.[item.id]
+                  ? moveProgress * Math.PI * 6
+                  : undefined
+              }
               poseMode={poseMode}
               mode={mode}
               transformMode={transformMode}
@@ -1592,6 +1622,45 @@ function StageContent({
             <meshBasicMaterial color="#d63c35" side={THREE.DoubleSide} />
           </mesh>
         ))}
+      {mode !== "camera" &&
+        Object.entries(shot?.lightKeys ?? {}).map(([lightId, keys]) => {
+          const light = scene.items.find((item) => item.id === lightId);
+          if (
+            !light ||
+            light.hidden ||
+            keys.length < 2 ||
+            selectedId !== lightId
+          )
+            return null;
+          return (
+            <group key={`light-route-${lightId}`}>
+              <Line
+                points={keys.map((key) => [
+                  key.x,
+                  mode === "plan" ? 0.12 : key.y + light.height,
+                  key.z,
+                ])}
+                color="#e8a123"
+                lineWidth={2}
+                raycast={() => null}
+              />
+              {keys.map((key) => (
+                <mesh
+                  key={key.at}
+                  position={[
+                    key.x,
+                    mode === "plan" ? 0.13 : key.y + light.height,
+                    key.z,
+                  ]}
+                  raycast={() => null}
+                >
+                  <sphereGeometry args={[0.09, 12, 8]} />
+                  <meshBasicMaterial color="#e8a123" depthTest={false} />
+                </mesh>
+              ))}
+            </group>
+          );
+        })}
       {mode !== "camera" && cameraItem && shot?.cameraEnd && (
         <CameraRoute
           camera={cameraItem}

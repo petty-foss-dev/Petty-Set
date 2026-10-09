@@ -1868,6 +1868,25 @@ button:focus-visible {
   white-space: nowrap;
   font-weight: 700;
 }
+.motion-keys > label {
+  display: grid;
+  gap: 5px;
+  margin: 9px 0;
+  color: #5a4c3d;
+  font-size: 11px;
+  font-weight: 700;
+}
+.motion-keys > button {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #c98a5e;
+  border-radius: 5px;
+  background: #f7e8d4;
+  color: #754322;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
 .pose-editor summary {
   cursor: pointer;
   color: #704e36;

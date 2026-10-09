@@ -10,6 +10,10 @@ import {
   wallBetween,
   wallEndpoints,
   actorPoseAt,
+  keyedPoseAt,
+  keyedLightAt,
+  aimYaw,
+  aimLightAtActor,
   cameraPoseAt,
   addActorWaypoint,
   moveActorPathPoint,
@@ -671,6 +675,51 @@ test("mannequin joints are saved per shot and validated", () => {
   orphan.scenes[0].shots[0].actorJoints.missing =
     mannequinJointsForPose("pointing");
   assert.equal(isProject(orphan), false);
+});
+
+test("shot pose and light keys interpolate and survive project import", () => {
+  const project = sampleProject();
+  const scene = project.scenes[0];
+  const shot = scene.shots[0];
+  const actor = scene.items.find((item) => item.kind === "actor");
+  const light = scene.items.find((item) => item.kind === "light");
+  const neutral = mannequinJointsForPose("neutral");
+  const raised = { ...neutral, rightArmLift: 80, rightElbowBend: 60 };
+  shot.actorPoseKeys = {
+    [actor.id]: [
+      { at: 0, joints: neutral },
+      { at: 1, joints: raised },
+    ],
+  };
+  shot.lightKeys = {
+    [light.id]: [
+      { at: 0, x: 0, y: 0, z: 0, rotation: 350, tilt: 30 },
+      { at: 1, x: 4, y: 2, z: -2, rotation: 10, tilt: 50 },
+    ],
+  };
+  shot.cameraTargetActorId = actor.id;
+  shot.lightTargetActors = { [light.id]: actor.id };
+  assert.equal(aimYaw({ x: 0, z: 2 }, { x: 0, z: 0 }), 0);
+  assert.equal(aimLightAtActor(light, actor).tilt >= 5, true);
+  assert.equal(keyedPoseAt(shot.actorPoseKeys[actor.id], 0.5).rightArmLift, 40);
+  assert.equal(keyedPoseAt(shot.actorPoseKeys[actor.id], 2).rightArmLift, 80);
+  assert.deepEqual(keyedLightAt(shot.lightKeys[light.id], 0.5), {
+    x: 2,
+    y: 1,
+    z: -1,
+    rotation: 360,
+    tilt: 40,
+  });
+  assert.equal(isProject(JSON.parse(JSON.stringify(project))), true);
+  const invalid = structuredClone(project);
+  invalid.scenes[0].shots[0].actorPoseKeys[actor.id][1].at = 0;
+  assert.equal(isProject(invalid), false);
+  const missing = structuredClone(project);
+  missing.scenes[0].shots[0].lightKeys.missing = shot.lightKeys[light.id];
+  assert.equal(isProject(missing), false);
+  const badTarget = structuredClone(project);
+  badTarget.scenes[0].shots[0].cameraTargetActorId = light.id;
+  assert.equal(isProject(badTarget), false);
 });
 
 test("saved poses survive project JSON and undo, with joint limits enforced", () => {

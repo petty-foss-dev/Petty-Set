@@ -74,6 +74,10 @@ import {
   moveActorPathPoint,
   removeActorWaypoint,
   actorPathLegs,
+  actorPoseAt,
+  aimLightAtActor,
+  keyedPoseAt,
+  keyedLightAt,
   replaceWallOpening,
   baseLayerId,
   sceneLayers,
@@ -81,6 +85,7 @@ import {
 } from "./model";
 import type {
   ActorPath,
+  LightKeyframe,
   FloorFinish,
   ItemKind,
   MannequinJoints,
@@ -363,10 +368,41 @@ function Editor({
       ),
     });
   }, [scene, shot]);
+  const previewScene = useMemo(
+    () => ({
+      ...stageScene,
+      items: stageScene.items.map((item) => {
+        if (item.kind !== "light") return item;
+        const keys = shot?.lightKeys?.[item.id];
+        const moving = keys?.length
+          ? { ...item, ...keyedLightAt(keys, moveProgress) }
+          : item;
+        const actorId = shot?.lightTargetActors?.[item.id];
+        const actor = stageScene.items.find((entry) => entry.id === actorId);
+        if (!actor || actor.kind !== "actor") return moving;
+        const path = shot?.actorPaths?.[actor.id];
+        const target = path
+          ? { ...actor, ...actorPoseAt(actor, path, moveProgress) }
+          : actor;
+        return { ...moving, ...aimLightAtActor(moving, target) };
+      }),
+    }),
+    [stageScene, shot, moveProgress],
+  );
+  const meterItems = useMemo(
+    () =>
+      previewScene.items.map((item) => {
+        const path = shot?.actorPaths?.[item.id];
+        return item.kind === "actor" && path
+          ? { ...item, ...actorPoseAt(item, path, moveProgress) }
+          : item;
+      }),
+    [previewScene, shot, moveProgress],
+  );
   const lightReading = currentLightSample
-    ? sampleFloorIlluminance(stageScene.items, currentLightSample)
+    ? sampleFloorIlluminance(meterItems, currentLightSample)
     : null;
-  const selected = stageScene.items.find((value) => value.id === selectedId);
+  const selected = previewScene.items.find((value) => value.id === selectedId);
   const selectedItems = selectedIds
     .map((id) => stageScene.items.find((item) => item.id === id))
     .filter((item): item is SceneItem => !!item);
@@ -394,9 +430,11 @@ function Editor({
   );
   const selectedJoints =
     selected?.kind === "actor"
-      ? (shot?.actorJoints?.[selected.id] ??
-        selected.mannequinJoints ??
-        mannequinJointsForPose(selected.mannequinPose))
+      ? shot?.actorPoseKeys?.[selected.id]?.length
+        ? keyedPoseAt(shot.actorPoseKeys[selected.id], moveProgress)
+        : (shot?.actorJoints?.[selected.id] ??
+          selected.mannequinJoints ??
+          mannequinJointsForPose(selected.mannequinPose))
       : undefined;
   const orderedShots =
     order === "story"
@@ -420,7 +458,9 @@ function Editor({
   const hasMotion =
     !!shot?.cameraEnd ||
     !!Object.keys(shot?.actorPaths ?? {}).length ||
-    !!Object.keys(shot?.actorActions ?? {}).length;
+    !!Object.keys(shot?.actorActions ?? {}).length ||
+    !!Object.keys(shot?.actorPoseKeys ?? {}).length ||
+    !!Object.keys(shot?.lightKeys ?? {}).length;
 
   useEffect(() => {
     onHistory(session.id, history);
@@ -452,7 +492,9 @@ function Editor({
       !playingMove ||
       (!shot?.cameraEnd &&
         !Object.keys(shot?.actorPaths ?? {}).length &&
-        !Object.keys(shot?.actorActions ?? {}).length)
+        !Object.keys(shot?.actorActions ?? {}).length &&
+        !Object.keys(shot?.actorPoseKeys ?? {}).length &&
+        !Object.keys(shot?.lightKeys ?? {}).length)
     )
       return;
     let handle = 0;
@@ -472,6 +514,8 @@ function Editor({
     shot?.cameraEnd,
     shot?.actorPaths,
     shot?.actorActions,
+    shot?.actorPoseKeys,
+    shot?.lightKeys,
     shot?.duration,
   ]);
 
@@ -632,6 +676,21 @@ function Editor({
     const source = scene.items.find((item) => item.id === id);
     const effective = stageScene.items.find((item) => item.id === id);
     if (effective?.locked && !("locked" in patch)) return;
+    if (
+      source?.kind === "light" &&
+      shot?.lightKeys?.[id]?.some(
+        (key) => Math.abs(key.at - moveProgress) < 0.005,
+      ) &&
+      Object.keys(patch).every((key) =>
+        ["x", "y", "z", "rotation", "tilt"].includes(key),
+      )
+    ) {
+      const key = shot.lightKeys[id].find(
+        (entry) => Math.abs(entry.at - moveProgress) < 0.005,
+      )!;
+      updateLightKey(id, key.at, patch);
+      return;
+    }
     if (
       source?.kind === "light" &&
       shot?.activeLightingPlanId &&
@@ -994,13 +1053,21 @@ function Editor({
           const actorMarks = { ...entry.actorMarks };
           const actorPaths = { ...entry.actorPaths };
           const actorJoints = { ...entry.actorJoints };
+          const actorPoseKeys = { ...entry.actorPoseKeys };
           const actorActions = { ...entry.actorActions };
+          const lightKeys = { ...entry.lightKeys };
+          const lightTargetActors = { ...entry.lightTargetActors };
           for (const id of ids) {
             delete actorMarks[id];
             delete actorPaths[id];
             delete actorJoints[id];
+            delete actorPoseKeys[id];
             delete actorActions[id];
+            delete lightKeys[id];
+            delete lightTargetActors[id];
           }
+          for (const [lightId, actorId] of Object.entries(lightTargetActors))
+            if (ids.has(actorId)) delete lightTargetActors[lightId];
           const lightingPlans = entry.lightingPlans?.map((plan) => {
             const fixtures = { ...plan.fixtures };
             for (const id of ids) delete fixtures[id];
@@ -1015,7 +1082,13 @@ function Editor({
             actorMarks,
             actorPaths,
             actorJoints,
+            actorPoseKeys,
             actorActions,
+            lightKeys,
+            lightTargetActors,
+            cameraTargetActorId: ids.has(entry.cameraTargetActorId ?? "")
+              ? undefined
+              : entry.cameraTargetActorId,
             lightingPlans,
           };
         }),
@@ -1069,23 +1142,43 @@ function Editor({
             !value.actorMarks?.[selected.id] &&
             !value.actorPaths?.[selected.id] &&
             !value.actorJoints?.[selected.id] &&
-            !value.actorActions?.[selected.id]
+            !value.actorPoseKeys?.[selected.id] &&
+            !value.actorActions?.[selected.id] &&
+            !value.lightKeys?.[selected.id] &&
+            !value.lightTargetActors?.[selected.id] &&
+            value.cameraTargetActorId !== selected.id &&
+            !Object.values(value.lightTargetActors ?? {}).includes(selected.id)
           )
             return { ...value, lightingPlans };
           const actorMarks = { ...value.actorMarks };
           const actorPaths = { ...value.actorPaths };
           const actorJoints = { ...value.actorJoints };
+          const actorPoseKeys = { ...value.actorPoseKeys };
           const actorActions = { ...value.actorActions };
+          const lightKeys = { ...value.lightKeys };
+          const lightTargetActors = { ...value.lightTargetActors };
           delete actorMarks[selected.id];
           delete actorPaths[selected.id];
           delete actorJoints[selected.id];
+          delete actorPoseKeys[selected.id];
           delete actorActions[selected.id];
+          delete lightKeys[selected.id];
+          delete lightTargetActors[selected.id];
+          for (const [lightId, actorId] of Object.entries(lightTargetActors))
+            if (actorId === selected.id) delete lightTargetActors[lightId];
           return {
             ...value,
             actorMarks,
             actorPaths,
             actorJoints,
+            actorPoseKeys,
             actorActions,
+            lightKeys,
+            lightTargetActors,
+            cameraTargetActorId:
+              value.cameraTargetActorId === selected.id
+                ? undefined
+                : value.cameraTargetActorId,
             lightingPlans,
           };
         }),
@@ -1314,6 +1407,25 @@ function Editor({
 
   function updateActorJoints(actorId: string, joints?: MannequinJoints) {
     if (shot) {
+      const keys = shot.actorPoseKeys?.[actorId];
+      const keyIndex =
+        keys?.findIndex((key) => Math.abs(key.at - moveProgress) < 0.005) ?? -1;
+      if (keyIndex >= 0) {
+        const actor = stageScene.items.find((item) => item.id === actorId);
+        const nextJoints =
+          joints ??
+          actor?.mannequinJoints ??
+          mannequinJointsForPose(actor?.mannequinPose);
+        updateShot({
+          actorPoseKeys: {
+            ...shot.actorPoseKeys,
+            [actorId]: keys!.map((key, index) =>
+              index === keyIndex ? { ...key, joints: nextJoints } : key,
+            ),
+          },
+        });
+        return;
+      }
       const actorJoints = { ...shot.actorJoints };
       if (joints) actorJoints[actorId] = joints;
       else delete actorJoints[actorId];
@@ -1321,6 +1433,74 @@ function Editor({
     } else {
       updateItem(actorId, { mannequinJoints: joints });
     }
+  }
+
+  function addPoseKey(actorId: string) {
+    if (!shot || !selectedJoints) return;
+    const at = Math.round(moveProgress * 100) / 100;
+    const keys = [...(shot.actorPoseKeys?.[actorId] ?? [])].filter(
+      (key) => key.at !== at,
+    );
+    keys.push({ at, joints: { ...selectedJoints } });
+    keys.sort((a, b) => a.at - b.at);
+    updateShot({ actorPoseKeys: { ...shot.actorPoseKeys, [actorId]: keys } });
+  }
+
+  function removePoseKey(actorId: string, at: number) {
+    if (!shot) return;
+    const actorPoseKeys = { ...shot.actorPoseKeys };
+    const keys = actorPoseKeys[actorId]?.filter((key) => key.at !== at);
+    if (keys?.length) actorPoseKeys[actorId] = keys;
+    else delete actorPoseKeys[actorId];
+    updateShot({ actorPoseKeys });
+  }
+
+  function addLightKey(item: SceneItem) {
+    if (!shot) return;
+    const at = Math.round(moveProgress * 100) / 100;
+    const current =
+      previewScene.items.find((entry) => entry.id === item.id) ?? item;
+    const key: LightKeyframe = {
+      at,
+      x: current.x,
+      y: current.y,
+      z: current.z,
+      rotation: current.rotation,
+      tilt: current.tilt ?? 45,
+    };
+    const keys = [...(shot.lightKeys?.[item.id] ?? [])].filter(
+      (entry) => entry.at !== at,
+    );
+    keys.push(key);
+    keys.sort((a, b) => a.at - b.at);
+    updateShot({ lightKeys: { ...shot.lightKeys, [item.id]: keys } });
+  }
+
+  function updateLightKey(
+    lightId: string,
+    at: number,
+    patch: Partial<LightKeyframe>,
+  ) {
+    if (!shot) return;
+    if (patch.tilt !== undefined)
+      patch = { ...patch, tilt: Math.min(90, Math.max(5, patch.tilt)) };
+    updateShot({
+      lightKeys: {
+        ...shot.lightKeys,
+        [lightId]: shot.lightKeys![lightId].map((key) =>
+          key.at === at ? { ...key, ...patch } : key,
+        ),
+      },
+    });
+  }
+
+  function removeLightKey(lightId: string, at: number) {
+    if (!shot) return;
+    const lightKeys = { ...shot.lightKeys };
+    const keys = lightKeys[lightId]?.filter((key) => key.at !== at);
+    if (keys?.length) lightKeys[lightId] = keys;
+    else delete lightKeys[lightId];
+    updateShot({ lightKeys });
   }
 
   function saveCurrentPose() {
@@ -1878,20 +2058,16 @@ function Editor({
   }
 
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
-  const routeCollisions = useMemo(
-    () =>
-      cameraItem && shot
-        ? cameraRouteCollisions(cameraItem, shot, stageScene.items)
-        : [],
-    [cameraItem, shot, stageScene.items],
-  );
-  const actorCollisions = useMemo(() => {
-    const actor = stageScene.items.find((item) => item.id === selectedId);
-    const path = actor && shot?.actorPaths?.[actor.id];
-    return actor?.kind === "actor" && path
-      ? actorRouteCollisions(actor, path, stageScene.items)
+  const routeCollisions =
+    cameraItem && shot
+      ? cameraRouteCollisions(cameraItem, shot, stageScene.items)
       : [];
-  }, [selectedId, shot, stageScene.items]);
+  const routeActor = stageScene.items.find((item) => item.id === selectedId);
+  const routePath = routeActor && shot?.actorPaths?.[routeActor.id];
+  const actorCollisions =
+    routeActor?.kind === "actor" && routePath
+      ? actorRouteCollisions(routeActor, routePath, stageScene.items)
+      : [];
   const optics = cameraItem
     ? cameraOptics(
         cameraItem.sensor ?? "super35",
@@ -2923,7 +3099,7 @@ function Editor({
           </div>
           <div className="stage-wrap">
             <Stage
-              scene={stageScene}
+              scene={previewScene}
               shot={shot}
               routeCollisions={routeCollisions}
               actorCollisions={actorCollisions}
@@ -3656,6 +3832,62 @@ function Editor({
                       </form>
                       {poseNameError && <p role="alert">{poseNameError}</p>}
                     </div>
+                    {shot && (
+                      <div className="pose-library motion-keys">
+                        <h4>Pose animation</h4>
+                        <p>
+                          Set a pose at two or more times to animate hands,
+                          arms, head, and legs during this shot. Joint edits at
+                          a key change that key. Pose keys take priority over
+                          the assigned action.
+                        </p>
+                        <label>
+                          Time · {(moveProgress * shot.duration).toFixed(1)}s
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Math.round(moveProgress * 100)}
+                            onChange={(event) => {
+                              setPlayingMove(false);
+                              setMoveProgress(Number(event.target.value) / 100);
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => addPoseKey(selected.id)}
+                        >
+                          Add pose key at playhead
+                        </button>
+                        {(shot.actorPoseKeys?.[selected.id] ?? []).map(
+                          (key) => (
+                            <div className="pose-library-row" key={key.at}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPlayingMove(false);
+                                  setMoveProgress(key.at);
+                                }}
+                              >
+                                {(key.at * shot.duration).toFixed(1)}s{" "}
+                                {Math.abs(key.at - moveProgress) < 0.005
+                                  ? "· editing"
+                                  : ""}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removePoseKey(selected.id, key.at)
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ),
+                        )}
+                      </div>
+                    )}
                     <details className="pose-editor">
                       <summary>Fine tune joints</summary>
                       {(["Head", "Arms", "Legs"] as const).map((group) => (
@@ -4682,6 +4914,122 @@ function Editor({
                 {selected.kind === "light" && (
                   <div className="field-section">
                     <h3>Light</h3>
+                    {shot && (
+                      <div className="pose-library motion-keys">
+                        <h4>Light movement</h4>
+                        <p>
+                          Key fixture position and aim over the shot. The
+                          preview and light meter follow the motion.
+                        </p>
+                        <label>
+                          Track actor
+                          <select
+                            value={shot.lightTargetActors?.[selected.id] ?? ""}
+                            onChange={(event) => {
+                              const lightTargetActors = {
+                                ...shot.lightTargetActors,
+                              };
+                              if (event.target.value)
+                                lightTargetActors[selected.id] =
+                                  event.target.value;
+                              else delete lightTargetActors[selected.id];
+                              updateShot({ lightTargetActors });
+                            }}
+                          >
+                            <option value="">Manual aim</option>
+                            {stageScene.items
+                              .filter((item) => item.kind === "actor")
+                              .map((actor) => (
+                                <option value={actor.id} key={actor.id}>
+                                  {actor.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        {shot.lightTargetActors?.[selected.id] && (
+                          <p>
+                            Actor tracking sets yaw and tilt during playback.
+                            Manual angles remain saved for when tracking is off.
+                          </p>
+                        )}
+                        <label>
+                          Time · {(moveProgress * shot.duration).toFixed(1)}s
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={Math.round(moveProgress * 100)}
+                            onChange={(event) => {
+                              setPlayingMove(false);
+                              setMoveProgress(Number(event.target.value) / 100);
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => addLightKey(selected)}
+                        >
+                          Add light key at playhead
+                        </button>
+                        {(shot.lightKeys?.[selected.id] ?? []).map((key) => (
+                          <div className="waypoint-fields" key={key.at}>
+                            <div className="waypoint-heading">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPlayingMove(false);
+                                  setMoveProgress(key.at);
+                                }}
+                              >
+                                {(key.at * shot.duration).toFixed(1)}s{" "}
+                                {Math.abs(key.at - moveProgress) < 0.005
+                                  ? "· editing"
+                                  : ""}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  removeLightKey(selected.id, key.at)
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <div className="field-grid">
+                              {(
+                                ["x", "y", "z", "rotation", "tilt"] as const
+                              ).map((field) => (
+                                <label key={field}>
+                                  <span>
+                                    {field === "rotation"
+                                      ? "Yaw °"
+                                      : field === "tilt"
+                                        ? "Tilt °"
+                                        : field.toUpperCase()}
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step={
+                                      field === "rotation" || field === "tilt"
+                                        ? 1
+                                        : 0.1
+                                    }
+                                    min={field === "tilt" ? 5 : undefined}
+                                    max={field === "tilt" ? 90 : undefined}
+                                    value={Number(key[field].toFixed(2))}
+                                    onChange={(event) =>
+                                      updateLightKey(selected.id, key.at, {
+                                        [field]: Number(event.target.value),
+                                      })
+                                    }
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <label className="full-field">
                       <span>Source</span>
                       <select
@@ -4768,10 +5116,8 @@ function Editor({
                         floorIlluminance(
                           selected,
                           lightAimPoint(selected),
-                          stageScene.items.filter(
-                            (item) => item.kind === "wall",
-                          ),
-                          stageScene.items,
+                          meterItems.filter((item) => item.kind === "wall"),
+                          meterItems,
                         ),
                       )}{" "}
                       lx estimated at the floor aim point · direct light with
@@ -5066,6 +5412,26 @@ function Editor({
                 </select>
               </label>
               <div className="camera-move-fields">
+                <label>
+                  Track actor in frame
+                  <select
+                    value={shot.cameraTargetActorId ?? ""}
+                    onChange={(event) =>
+                      updateShot({
+                        cameraTargetActorId: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">Manual camera aim</option>
+                    {stageScene.items
+                      .filter((item) => item.kind === "actor")
+                      .map((actor) => (
+                        <option value={actor.id} key={actor.id}>
+                          {actor.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
                 <label>
                   <input
                     type="checkbox"
