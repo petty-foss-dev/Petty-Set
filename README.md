@@ -47,7 +47,7 @@ Open the address printed by Vite. The app stores the current project in this bro
 - Build an outdoor scene with grass, asphalt, sand, or studio ground; set sky color and sun direction/elevation; add original trees, park benches, vehicles, and paved ground patches. An exterior sample scene demonstrates the catalog.
 - Dress a stylized backlot street with editable storefront, brick, and theater facades, custom sign text, detailed streetlamps and barrels, road markings, scored sidewalks, curbs, and wooden actors. The Main Street sample includes an actor route, a greeting pose, and a camera shot. The editor uses a warm studio palette inspired by classic movie-making games; all scene geometry and styling are original.
 - Extend a selected wall into an adjoining room with a doorway, then furnish that room and route a camera move through it with editable waypoints.
-- Import self-contained glTF 2.0 `.glb` assets up to 1 MB. Models are embedded in local project data and JSON exports; browser storage is capped at roughly 3 MB of project JSON.
+- Import self-contained glTF 2.0 `.glb` assets up to 50 MB. Model bytes stay in local IndexedDB storage; exported project JSON embeds them for portable backups.
 - Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Place a power distribution source, assign lights to it, set fixture loads and source capacity, and see cable runs and total load in the set plan.
 - Create shot-specific Plan A/B lighting alternatives, duplicate and rename plans, and preview each plan without changing the shared set or other shots.

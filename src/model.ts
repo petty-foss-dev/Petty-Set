@@ -203,6 +203,7 @@ export interface SceneItem {
   mannequinPose?: "neutral" | "greeting" | "pointing";
   mannequinJoints?: MannequinJoints;
   assetData?: string;
+  assetRef?: string;
   roomExtended?: boolean;
   wallFinish?: "plaster" | "brick" | "timber" | "concrete";
   hidden?: boolean;
@@ -541,12 +542,20 @@ export function isProject(value: unknown): value is Project {
           (item.kind !== "actor" ||
             !isMannequinJoints(item.mannequinJoints))) ||
         (item.kind === "asset" &&
-          (!isString(item.assetData) ||
-            !item.assetData.startsWith(
-              "data:model/gltf-binary;base64,Z2xURgI",
-            ) ||
-            item.assetData.length > 1_500_000)) ||
-        (item.kind !== "asset" && item.assetData !== undefined) ||
+          (!(
+            (isString(item.assetRef) &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                item.assetRef,
+              )) ||
+            (isString(item.assetData) &&
+              item.assetData.startsWith(
+                "data:model/gltf-binary;base64,Z2xURgI",
+              ) &&
+              item.assetData.length <= 66_666_704)
+          ) ||
+            (item.assetData !== undefined && item.assetRef !== undefined))) ||
+        (item.kind !== "asset" &&
+          (item.assetData !== undefined || item.assetRef !== undefined)) ||
         (item.roomExtended !== undefined &&
           (item.kind !== "wall" || typeof item.roomExtended !== "boolean")) ||
         (item.wallFinish !== undefined &&

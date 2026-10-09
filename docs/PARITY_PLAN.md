@@ -26,7 +26,7 @@ Target: the complete public [Lensflare](https://lensflare.io/) planning workflow
 
 ## Parallel technical tracks
 
-**Persistence.** Keep versioned project schema migrations and validate references at import. Move image and GLB bytes out of the current local-storage JSON into IndexedDB before expanding the catalog. Portable project archives must include all assets.
+**Persistence.** GLB bytes now live in IndexedDB, with portable JSON exports embedding them. Move remaining image bytes out of local-storage JSON, add versioned schema migrations, and validate references at import. Portable project archives must include all assets.
 
 **Geometry.** Normalize wall/opening and room topology before adding more drawing tools. A wall may need multiple openings and several room memberships; splitting, merging and moving endpoints must preserve them.
 

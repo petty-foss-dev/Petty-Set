@@ -5,6 +5,7 @@ import {
   isProject,
   extendRoom,
   sampleProject,
+  makeItem,
   snapWallPoint,
   wallBetween,
   wallEndpoints,
@@ -475,6 +476,18 @@ test("project import rejects asset data without a GLB 2 header", () => {
     opening: undefined,
     assetData: "data:model/gltf-binary;base64,AAAA",
   });
+  assert.equal(isProject(project), false);
+});
+
+test("project import accepts stored model references and rejects malformed ones", () => {
+  const project = sampleProject();
+  const item = {
+    ...makeItem("asset", 1),
+    assetRef: "5a760408-bdc1-46c2-b69d-34bf0d9d2481",
+  };
+  project.scenes[0].items.push(item);
+  assert.equal(isProject(project), true);
+  item.assetRef = "../../another-project";
   assert.equal(isProject(project), false);
 });
 

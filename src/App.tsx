@@ -73,6 +73,12 @@ import type {
   Shot,
 } from "./model";
 import { historyReducer, projectHistory } from "./history";
+import {
+  localProject,
+  maxAssetBytes,
+  portableProject,
+  saveAsset,
+} from "./assetStore";
 import { aspectRatios, cameraOptics, sensors } from "./cinematography";
 import type { AspectRatio, SensorId } from "./cinematography";
 import { shotListCSV } from "./shotList";
@@ -154,7 +160,7 @@ function download(name: string, contents: string, type: string) {
   link.href = url;
   link.download = name;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function downloadBlob(name: string, contents: Blob) {
@@ -498,10 +504,8 @@ function App() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 1_000_000) {
-      window.alert(
-        "Use a GLB smaller than 1 MB. This local project embeds imported assets in its JSON export.",
-      );
+    if (file.size > maxAssetBytes) {
+      window.alert("Use a GLB smaller than 50 MB.");
       return;
     }
     if (!file.name.toLowerCase().endsWith(".glb")) {
@@ -535,20 +539,7 @@ function App() {
       const model = await new GLTFLoader().parseAsync(bytes, "");
       const box = new THREE.Box3().setFromObject(model.scene);
       if (box.isEmpty()) throw new Error("Empty model");
-      const encoded = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(",")[1]);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      const assetData = `data:model/gltf-binary;base64,${encoded}`;
-      const currentBytes = JSON.stringify(project).length;
-      if (currentBytes + assetData.length > 3_000_000) {
-        window.alert(
-          "This project is near the browser storage limit. Export a project backup or use a smaller asset.",
-        );
-        return;
-      }
+      const assetRef = await saveAsset(bytes);
       const size = box.getSize(new THREE.Vector3());
       const next = {
         ...makeItem(
@@ -559,7 +550,7 @@ function App() {
         width: Math.max(0.1, size.x),
         height: Math.max(0.1, size.y),
         depth: Math.max(0.1, size.z),
-        assetData,
+        assetRef,
       };
       updateScene((current) => ({
         ...current,
@@ -567,9 +558,11 @@ function App() {
       }));
       setSelectedId(next.id);
       setMode("stage");
-    } catch {
+    } catch (error) {
       window.alert(
-        "This GLB could not be loaded. Export a self-contained glTF 2.0 binary model and try again.",
+        error instanceof DOMException && error.name === "QuotaExceededError"
+          ? "There is not enough browser storage for this GLB. Free local storage and try again."
+          : "This GLB could not be loaded. Export a self-contained glTF 2.0 binary model and try again.",
       );
     }
   }
@@ -1348,10 +1341,11 @@ function App() {
     try {
       const value: unknown = JSON.parse(await file.text());
       if (!isProject(value)) throw new Error("Unsupported project");
-      dispatch({ type: "replace", project: value });
-      setSceneId(value.scenes[0].id);
+      const restored = await localProject(value);
+      dispatch({ type: "replace", project: restored });
+      setSceneId(restored.scenes[0].id);
       setCalibrationPoints([]);
-      setShotId(value.scenes[0].shots[0]?.id);
+      setShotId(restored.scenes[0].shots[0]?.id);
       resetMove();
       setSelectedId(undefined);
     } catch {
@@ -1506,12 +1500,19 @@ function App() {
               <small>Measured vector drawing</small>
             </button>
             <button
-              onClick={() => {
-                download(
-                  `${project.name || "project"}.pettyset.json`,
-                  JSON.stringify(project, null, 2),
-                  "application/json",
-                );
+              onClick={async () => {
+                try {
+                  const backup = await portableProject(project);
+                  download(
+                    `${project.name || "project"}.pettyset.json`,
+                    JSON.stringify(backup, null, 2),
+                    "application/json",
+                  );
+                } catch {
+                  window.alert(
+                    "A stored 3D model is missing, so the project backup could not be created.",
+                  );
+                }
                 setShowExport(false);
               }}
             >
