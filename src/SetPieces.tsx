@@ -649,6 +649,7 @@ function Camera({ item }: { item: SceneItem }) {
 function Light({ item }: { item: SceneItem }) {
   const h = item.height;
   const fixture = item.lightType ?? "softbox";
+  const sourceSize = item.sourceSize ?? 0.6;
   return (
     <group>
       {Array.from({ length: 3 }, (_, i) => {
@@ -682,20 +683,20 @@ function Light({ item }: { item: SceneItem }) {
           <>
             <Box
               position={[0, 0, -0.22]}
-              size={[0.72, 0.62, 0.1]}
+              size={[sourceSize + 0.12, sourceSize * 0.8 + 0.14, 0.1]}
               color="#242b2d"
             />
             <Box
               position={[0, 0, -0.278]}
-              size={[0.59, 0.49, 0.012]}
+              size={[sourceSize, sourceSize * 0.8, 0.012]}
               color={item.color ?? "#fff3d6"}
               roughness={0.3}
             />
             {[-1, 1].map((side) => (
               <Box
                 key={side}
-                position={[side * 0.36, 0, -0.31]}
-                size={[0.03, 0.57, 0.25]}
+                position={[(side * (sourceSize + 0.12)) / 2, 0, -0.31]}
+                size={[0.03, sourceSize * 0.8 + 0.09, 0.25]}
                 color="#252a2a"
               />
             ))}

@@ -226,6 +226,7 @@ export interface SceneItem {
   depth: number;
   intensity?: number;
   lumens?: number;
+  sourceSize?: number;
   tilt?: number;
   spread?: number;
   focalLength?: number;
@@ -638,6 +639,7 @@ export function isProject(value: unknown): value is Project {
           "intensity",
           "spread",
           "lumens",
+          "sourceSize",
           "tilt",
           "focalLength",
           "aperture",
@@ -649,6 +651,10 @@ export function isProject(value: unknown): value is Project {
           (item.kind !== "light" ||
             (item.lumens as number) < 0 ||
             (item.lumens as number) > 100_000)) ||
+        (item.sourceSize !== undefined &&
+          (item.kind !== "light" ||
+            (item.sourceSize as number) < 0.1 ||
+            (item.sourceSize as number) > 5)) ||
         (item.tilt !== undefined &&
           (item.kind !== "light" ||
             (item.tilt as number) < 5 ||
@@ -831,6 +837,7 @@ export function isProject(value: unknown): value is Project {
                     "height",
                     "intensity",
                     "lumens",
+                    "sourceSize",
                     "tilt",
                     "spread",
                     "color",
@@ -848,6 +855,7 @@ export function isProject(value: unknown): value is Project {
                 "height",
                 "intensity",
                 "lumens",
+                "sourceSize",
                 "tilt",
                 "spread",
                 "powerWatts",
@@ -860,6 +868,9 @@ export function isProject(value: unknown): value is Project {
               (fixture.lumens !== undefined &&
                 ((fixture.lumens as number) < 0 ||
                   (fixture.lumens as number) > 100_000)) ||
+              (fixture.sourceSize !== undefined &&
+                ((fixture.sourceSize as number) < 0.1 ||
+                  (fixture.sourceSize as number) > 5)) ||
               (fixture.tilt !== undefined &&
                 ((fixture.tilt as number) < 5 ||
                   (fixture.tilt as number) > 90)) ||
@@ -1087,6 +1098,7 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
         depth: 0.45,
         x: 2,
         intensity: 2,
+        sourceSize: 0.6,
         tilt: 45,
         spread: 45,
         color: "#fff4df",

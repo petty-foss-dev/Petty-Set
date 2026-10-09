@@ -49,7 +49,7 @@ Open the address printed by Vite. Films, model files, reference images, floor-pl
 - Extend a selected wall into an adjoining room with a doorway, then furnish that room and route a camera move through it with draggable plan waypoints and straight or smooth path playback. Camera and actor routes flag solid-wall crossings and mark them in the plan; actor warnings account for performer width and height against door openings.
 - Import self-contained glTF 2.0 `.glb` assets up to 50 MB. Model bytes stay in local IndexedDB storage; exported project JSON embeds them for portable backups.
 - Store storyboard references, imported floor-plan images, and captured frames outside the film record while keeping project backups self-contained.
-- Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
+- Switch lights between softbox, spotlight, and practical bulb previews. Size softbox emitters and trace 16 direct rays per floor sample for soft shadow coverage, or use the faster single-ray preview. The floor light meter accounts for wall openings and approximate solid props; the 3D stage uses shadow maps. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Place a power distribution source, assign lights to it, set fixture loads and source capacity, and see cable runs and total load in the set plan.
 - Create shot-specific Plan A/B lighting alternatives, duplicate and rename plans, and preview each plan without changing the shared set or other shots.
 - Undo and redo project edits; duplicate, hide, and lock set objects.

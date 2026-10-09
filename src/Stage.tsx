@@ -232,6 +232,7 @@ interface Props {
   >;
   moveProgress: number;
   lightTraceVisible: boolean;
+  lightRaySamples: number;
   lightSample: PlanPoint | null;
   onLightSample: (point: PlanPoint) => void;
 }
@@ -285,8 +286,17 @@ function FixtureLight({ item, mode }: { item: SceneItem; mode: ViewMode }) {
   );
 }
 
-function LightTraceOverlay({ items }: { items: SceneItem[] }) {
-  const trace = useMemo(() => traceFloor(items), [items]);
+function LightTraceOverlay({
+  items,
+  samples,
+}: {
+  items: SceneItem[];
+  samples: number;
+}) {
+  const trace = useMemo(
+    () => traceFloor(items, 0.25, samples),
+    [items, samples],
+  );
   const texture = useMemo(() => {
     if (!trace) return null;
     const canvas = document.createElement("canvas");
@@ -941,6 +951,7 @@ function StageContent({
   onCalibrationPoint,
   moveProgress,
   lightTraceVisible,
+  lightRaySamples,
   lightSample,
   onLightSample,
 }: Omit<Props, "captureRef">) {
@@ -1459,7 +1470,7 @@ function StageContent({
         </group>
       )}
       {mode === "plan" && lightTraceVisible && (
-        <LightTraceOverlay items={visualItems} />
+        <LightTraceOverlay items={visualItems} samples={lightRaySamples} />
       )}
       {mode === "plan" && lightTraceVisible && lightSample && (
         <group position={[lightSample.x, 0.045, lightSample.z]}>

@@ -296,6 +296,7 @@ function Editor({
     "translate",
   );
   const [lightTraceVisible, setLightTraceVisible] = useState(false);
+  const [softRayTrace, setSoftRayTrace] = useState(false);
   const [stillWidth, setStillWidth] = useState(1920);
   const [lightSample, setLightSample] = useState<{
     sceneId: string;
@@ -399,8 +400,9 @@ function Editor({
       }),
     [previewScene, shot, moveProgress],
   );
+  const lightRaySamples = softRayTrace && !playingMove ? 16 : 1;
   const lightReading = currentLightSample
-    ? sampleFloorIlluminance(meterItems, currentLightSample)
+    ? sampleFloorIlluminance(meterItems, currentLightSample, lightRaySamples)
     : null;
   const selected = previewScene.items.find((value) => value.id === selectedId);
   const selectedItems = selectedIds
@@ -3108,6 +3110,7 @@ function Editor({
               mode={mode}
               transformMode={transformMode}
               lightTraceVisible={lightTraceVisible}
+              lightRaySamples={lightRaySamples}
               lightSample={currentLightSample}
               onLightSample={(point) =>
                 setLightSample({ sceneId: scene.id, ...point })
@@ -3246,12 +3249,27 @@ function Editor({
                 aria-label="Estimated floor illumination scale"
               >
                 <strong>DIRECT LIGHT · FLOOR LUX</strong>
+                <label>
+                  Trace quality
+                  <select
+                    aria-label="Light trace quality"
+                    value={softRayTrace ? "soft" : "fast"}
+                    onChange={(event) =>
+                      setSoftRayTrace(event.target.value === "soft")
+                    }
+                  >
+                    <option value="fast">Fast · one ray</option>
+                    <option value="soft">Soft shadows · 16 rays</option>
+                  </select>
+                </label>
                 <div className="light-trace-scale" />
                 <span>
                   5 lx <b>50</b> <b>200</b> 500+ lx
                 </span>
                 <small>
-                  Fixture beams, falloff, wall openings and solid props
+                  {softRayTrace
+                    ? "Softbox area rays, wall openings and solid props · fast preview during playback"
+                    : "Fixture beams, falloff, wall openings and solid props"}
                 </small>
                 {lightReading && currentLightSample ? (
                   <div className="light-meter">
@@ -5046,6 +5064,29 @@ function Editor({
                         <option value="practical">Practical bulb</option>
                       </select>
                     </label>
+                    {(selected.lightType ?? "softbox") === "softbox" && (
+                      <label className="full-field">
+                        <span>Emitter width</span>
+                        <div>
+                          <input
+                            type="number"
+                            min="0.1"
+                            max="5"
+                            step="0.1"
+                            value={selected.sourceSize ?? 0.6}
+                            onChange={(event) =>
+                              updateItem(selected.id, {
+                                sourceSize: Math.min(
+                                  5,
+                                  Math.max(0.1, Number(event.target.value)),
+                                ),
+                              })
+                            }
+                          />
+                          <em>m</em>
+                        </div>
+                      </label>
+                    )}
                     <label className="full-field">
                       <span>Light output</span>
                       <div>
@@ -5118,6 +5159,7 @@ function Editor({
                           lightAimPoint(selected),
                           meterItems.filter((item) => item.kind === "wall"),
                           meterItems,
+                          lightRaySamples,
                         ),
                       )}{" "}
                       lx estimated at the floor aim point · direct light with

@@ -8,6 +8,7 @@ const fields = [
   "height",
   "intensity",
   "lumens",
+  "sourceSize",
   "tilt",
   "spread",
   "color",

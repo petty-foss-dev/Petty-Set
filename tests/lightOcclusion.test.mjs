@@ -97,3 +97,34 @@ test("trace and meter use the same object occlusion", () => {
     );
   }
 });
+
+test("softbox area rays produce a penumbra and the meter matches the trace", () => {
+  const light = {
+    ...fixture(),
+    lightType: "softbox",
+    sourceSize: 1.2,
+    tilt: 90,
+    spread: 150,
+  };
+  const box = { ...blocker(), x: 0.5, width: 0.3, depth: 0.3, height: 1.8 };
+  const point = { x: 1, z: 0 };
+  assert.equal(floorIlluminance(light, point, [], [box]), 0);
+  const soft = floorIlluminance(light, point, [], [box], 16);
+  assert.ok(soft > 0);
+  assert.ok(soft < floorIlluminance(light, point, [], [], 16));
+  assert.equal(sampleFloorIlluminance([light, box], point, 16).total, soft);
+
+  const trace = traceFloor([light, box], 0.5, 16);
+  const column = Math.floor(trace.width / 2);
+  const row = Math.floor(trace.height / 2);
+  const tracedPoint = {
+    x: trace.minX + ((column + 0.5) * trace.worldWidth) / trace.width,
+    z: trace.minZ + ((row + 0.5) * trace.worldHeight) / trace.height,
+  };
+  assert.ok(
+    Math.abs(
+      trace.values[row * trace.width + column] -
+        sampleFloorIlluminance([light, box], tracedPoint, 16).total,
+    ) < 1e-5,
+  );
+});

@@ -1023,7 +1023,7 @@ test("shot lighting plans keep alternatives independent through project export",
   const second = updateLightingFixture(
     { ...first, id: "plan-b", name: "Plan B" },
     light,
-    { lumens: baseLumens + 500, x: light.x + 2 },
+    { lumens: baseLumens + 500, sourceSize: 1.2, x: light.x + 2 },
   );
   shot.lightingPlans = [first, second];
   shot.activeLightingPlanId = second.id;
@@ -1033,6 +1033,11 @@ test("shot lighting plans keep alternatives independent through project export",
     baseLumens + 500,
   );
   assert.equal(scene.items.find((item) => item.id === light.id).x, light.x);
+  assert.equal(
+    resolveLightingPlan(scene, shot).items.find((item) => item.id === light.id)
+      .sourceSize,
+    1.2,
+  );
   shot.activeLightingPlanId = first.id;
   assert.equal(
     resolveLightingPlan(scene, shot).items.find((item) => item.id === light.id)
@@ -1087,7 +1092,11 @@ test("fixture photometry rejects invalid output and tilt", () => {
   assert.equal(fixtureLumens(fill), 780);
   light.lumens = 1800;
   light.tilt = 65;
+  light.sourceSize = 1.2;
   assert.equal(isProject(project), true);
+  light.sourceSize = 0;
+  assert.equal(isProject(project), false);
+  light.sourceSize = 1.2;
   light.lumens = -1;
   assert.equal(isProject(project), false);
   light.lumens = 1800;

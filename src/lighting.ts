@@ -151,7 +151,7 @@ function wallBlocksRay(light: SceneItem, point: LightPoint, wall: SceneItem) {
   return true;
 }
 
-function floorIlluminanceWithOccluders(
+function singleRayIlluminance(
   light: SceneItem,
   point: LightPoint,
   walls: SceneItem[],
@@ -188,21 +188,67 @@ function floorIlluminanceWithOccluders(
   return (candela * cosineFloor * falloff) / distanceSquared;
 }
 
+function floorIlluminanceWithOccluders(
+  light: SceneItem,
+  point: LightPoint,
+  walls: SceneItem[],
+  occluders: Occluder[],
+  samples: number,
+) {
+  if (light.lightType !== "softbox" || samples <= 1)
+    return singleRayIlluminance(light, point, walls, occluders);
+  const count = Math.max(2, Math.round(Math.sqrt(samples)));
+  const size = light.sourceSize ?? 0.6;
+  const yaw = (light.rotation * Math.PI) / 180;
+  const tilt = ((light.tilt ?? 45) * Math.PI) / 180;
+  const right = { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
+  const up = {
+    x: -Math.sin(yaw) * Math.sin(tilt),
+    y: Math.cos(tilt),
+    z: -Math.cos(yaw) * Math.sin(tilt),
+  };
+  let total = 0;
+  for (let row = 0; row < count; row++) {
+    for (let column = 0; column < count; column++) {
+      const across = ((column + 0.5) / count - 0.5) * size;
+      const vertical = ((row + 0.5) / count - 0.5) * size * 0.8;
+      total += singleRayIlluminance(
+        {
+          ...light,
+          x: light.x + right.x * across + up.x * vertical,
+          y: light.y + up.y * vertical,
+          z: light.z + right.z * across + up.z * vertical,
+        },
+        point,
+        walls,
+        occluders,
+      );
+    }
+  }
+  return total / (count * count);
+}
+
 export function floorIlluminance(
   light: SceneItem,
   point: LightPoint,
   walls: SceneItem[],
   objects: SceneItem[] = [],
+  samples = 1,
 ) {
   return floorIlluminanceWithOccluders(
     light,
     point,
     walls,
     prepareOccluders(objects),
+    samples,
   );
 }
 
-export function sampleFloorIlluminance(items: SceneItem[], point: LightPoint) {
+export function sampleFloorIlluminance(
+  items: SceneItem[],
+  point: LightPoint,
+  samples = 1,
+) {
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
   const occluders = prepareOccluders(items);
   const contributors = items
@@ -210,7 +256,13 @@ export function sampleFloorIlluminance(items: SceneItem[], point: LightPoint) {
     .map((light) => ({
       id: light.id,
       name: light.name,
-      lux: floorIlluminanceWithOccluders(light, point, walls, occluders),
+      lux: floorIlluminanceWithOccluders(
+        light,
+        point,
+        walls,
+        occluders,
+        samples,
+      ),
     }))
     .sort((a, b) => b.lux - a.lux);
   return {
@@ -219,7 +271,7 @@ export function sampleFloorIlluminance(items: SceneItem[], point: LightPoint) {
   };
 }
 
-export function traceFloor(items: SceneItem[], step = 0.25) {
+export function traceFloor(items: SceneItem[], step = 0.25, samples = 1) {
   const lights = items.filter((item) => item.kind === "light" && !item.hidden);
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
   const occluders = prepareOccluders(items);
@@ -243,7 +295,14 @@ export function traceFloor(items: SceneItem[], step = 0.25) {
       };
       values[row * width + column] = lights.reduce(
         (total, light) =>
-          total + floorIlluminanceWithOccluders(light, point, walls, occluders),
+          total +
+          floorIlluminanceWithOccluders(
+            light,
+            point,
+            walls,
+            occluders,
+            samples,
+          ),
         0,
       );
     }

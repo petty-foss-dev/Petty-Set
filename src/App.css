@@ -817,6 +817,17 @@
   font-size: 9px;
   letter-spacing: 0.8px;
 }
+.light-trace-legend > label {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.light-trace-legend select {
+  width: 100%;
+  min-width: 0;
+}
 .light-trace-scale {
   height: 8px;
   margin-top: 7px;
