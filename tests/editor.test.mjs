@@ -11,6 +11,7 @@ import {
   wallEndpoints,
   actorPoseAt,
   addActorWaypoint,
+  moveActorPathPoint,
   removeActorWaypoint,
   outdoorScene,
   backlotScene,
@@ -493,6 +494,43 @@ test("actor route editing keeps timing aligned with waypoints", () => {
     removeActorWaypoint(addActorWaypoint(legacy, point), 0).legs,
     undefined,
   );
+});
+
+test("moving an actor route handle preserves facing, height and leg timing", () => {
+  const project = { version: 1, name: "Exterior", scenes: [outdoorScene()] };
+  const shot = project.scenes[0].shots.find(
+    (entry) => Object.keys(entry.actorPaths ?? {}).length,
+  );
+  assert.ok(shot);
+  const actorId = Object.keys(shot.actorPaths)[0];
+  const original = shot.actorPaths[actorId];
+  const timed = {
+    ...original,
+    legs: Array.from({ length: original.waypoints.length + 1 }, (_, i) => ({
+      weight: i + 1,
+      easing: i % 2 ? "linear" : "smooth",
+    })),
+  };
+  const waypoint = moveActorPathPoint(timed, 0, { x: 1.25, z: -0.5 });
+  assert.deepEqual(waypoint.waypoints[0], {
+    ...timed.waypoints[0],
+    x: 1.25,
+    z: -0.5,
+  });
+  assert.deepEqual(waypoint.end, timed.end);
+  assert.deepEqual(waypoint.legs, timed.legs);
+  const end = moveActorPathPoint(waypoint, waypoint.waypoints.length, {
+    x: 2.5,
+    z: -1.75,
+  });
+  assert.deepEqual(end.end, { ...timed.end, x: 2.5, z: -1.75 });
+  assert.deepEqual(end.legs, timed.legs);
+  assert.deepEqual(timed, {
+    ...original,
+    legs: timed.legs,
+  });
+  shot.actorPaths[actorId] = end;
+  assert.equal(isProject(project), true);
 });
 
 test("actor route validation and legacy projects roundtrip", () => {

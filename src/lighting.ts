@@ -3,6 +3,92 @@ import type { SceneItem } from "./model.ts";
 
 export type LightPoint = { x: number; z: number };
 
+type Occluder = {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  halfWidth: number;
+  height: number;
+  halfDepth: number;
+  cosine: number;
+  sine: number;
+};
+
+const solidKinds = new Set<SceneItem["kind"]>([
+  "actor",
+  "box",
+  "sofa",
+  "shelf",
+  "vehicle",
+  "facade",
+  "barrel",
+  "asset",
+]);
+
+function prepareOccluders(items: SceneItem[]): Occluder[] {
+  return items
+    .filter((item) => solidKinds.has(item.kind) && !item.hidden)
+    .map((item) => {
+      const yaw = (item.rotation * Math.PI) / 180;
+      return {
+        id: item.id,
+        x: item.x,
+        y: item.y,
+        z: item.z,
+        halfWidth: item.width / 2,
+        height: item.height,
+        halfDepth: item.depth / 2,
+        cosine: Math.cos(yaw),
+        sine: Math.sin(yaw),
+      };
+    });
+}
+
+function objectBlocksRay(
+  light: SceneItem,
+  point: LightPoint,
+  object: Occluder,
+) {
+  if (light.id === object.id) return false;
+  const startX = light.x - object.x;
+  const startZ = light.z - object.z;
+  const endX = point.x - object.x;
+  const endZ = point.z - object.z;
+  const start = [
+    object.cosine * startX - object.sine * startZ,
+    light.y + light.height,
+    object.sine * startX + object.cosine * startZ,
+  ];
+  const end = [
+    object.cosine * endX - object.sine * endZ,
+    0,
+    object.sine * endX + object.cosine * endZ,
+  ];
+  const limits = [
+    [-object.halfWidth, object.halfWidth],
+    [object.y, object.y + object.height],
+    [-object.halfDepth, object.halfDepth],
+  ];
+  let entry = 0;
+  let exit = 1;
+  for (let axis = 0; axis < 3; axis++) {
+    const delta = end[axis] - start[axis];
+    if (Math.abs(delta) < 1e-9) {
+      if (start[axis] < limits[axis][0] || start[axis] > limits[axis][1])
+        return false;
+      continue;
+    }
+    const first = (limits[axis][0] - start[axis]) / delta;
+    const second = (limits[axis][1] - start[axis]) / delta;
+    entry = Math.max(entry, Math.min(first, second));
+    exit = Math.min(exit, Math.max(first, second));
+    if (entry > exit) return false;
+  }
+  // Ignore contact only at the light or sampled floor point.
+  return entry < 0.999 && exit > 0.001;
+}
+
 export function fixtureLumens(light: SceneItem) {
   return light.lumens ?? (light.intensity ?? 2) * 600;
 }
@@ -62,10 +148,11 @@ function wallBlocksRay(light: SceneItem, point: LightPoint, wall: SceneItem) {
   return true;
 }
 
-export function floorIlluminance(
+function floorIlluminanceWithOccluders(
   light: SceneItem,
   point: LightPoint,
   walls: SceneItem[],
+  occluders: Occluder[],
 ) {
   if (light.kind !== "light" || light.hidden || fixtureLumens(light) <= 0)
     return 0;
@@ -93,17 +180,34 @@ export function floorIlluminance(
   }
   if (walls.some((wall) => !wall.hidden && wallBlocksRay(light, point, wall)))
     return 0;
+  if (occluders.some((object) => objectBlocksRay(light, point, object)))
+    return 0;
   return (candela * cosineFloor * falloff) / distanceSquared;
+}
+
+export function floorIlluminance(
+  light: SceneItem,
+  point: LightPoint,
+  walls: SceneItem[],
+  objects: SceneItem[] = [],
+) {
+  return floorIlluminanceWithOccluders(
+    light,
+    point,
+    walls,
+    prepareOccluders(objects),
+  );
 }
 
 export function sampleFloorIlluminance(items: SceneItem[], point: LightPoint) {
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
+  const occluders = prepareOccluders(items);
   const contributors = items
     .filter((item) => item.kind === "light" && !item.hidden)
     .map((light) => ({
       id: light.id,
       name: light.name,
-      lux: floorIlluminance(light, point, walls),
+      lux: floorIlluminanceWithOccluders(light, point, walls, occluders),
     }))
     .sort((a, b) => b.lux - a.lux);
   return {
@@ -115,6 +219,7 @@ export function sampleFloorIlluminance(items: SceneItem[], point: LightPoint) {
 export function traceFloor(items: SceneItem[], step = 0.25) {
   const lights = items.filter((item) => item.kind === "light" && !item.hidden);
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
+  const occluders = prepareOccluders(items);
   const points = [
     ...walls.flatMap(wallEndpoints),
     ...lights.map((item) => ({ x: item.x, z: item.z })),
@@ -134,7 +239,8 @@ export function traceFloor(items: SceneItem[], step = 0.25) {
         z: minZ + ((row + 0.5) * (maxZ - minZ)) / height,
       };
       values[row * width + column] = lights.reduce(
-        (total, light) => total + floorIlluminance(light, point, walls),
+        (total, light) =>
+          total + floorIlluminanceWithOccluders(light, point, walls, occluders),
         0,
       );
     }

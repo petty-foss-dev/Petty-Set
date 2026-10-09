@@ -1102,6 +1102,21 @@ export function actorPathLegs(path: ActorPath): ActorPathLeg[] {
   );
 }
 
+export function moveActorPathPoint(
+  path: ActorPath,
+  index: number,
+  point: { x: number; z: number },
+): ActorPath {
+  if (index === path.waypoints.length)
+    return { ...path, end: { ...path.end, ...point } };
+  return {
+    ...path,
+    waypoints: path.waypoints.map((waypoint, i) =>
+      i === index ? { ...waypoint, ...point } : waypoint,
+    ),
+  };
+}
+
 export function addActorWaypoint(path: ActorPath, point: ActorMark): ActorPath {
   const legs = path.legs;
   const final = legs?.at(-1);

@@ -21,6 +21,8 @@ import type { PlanPoint } from "./floorplan";
 import SetPiece from "./SetPieces";
 import Mannequin from "./Mannequin";
 import type {
+  ActorMark,
+  ActorPath,
   FloorFinish,
   MannequinJoints,
   SceneItem,
@@ -199,6 +201,11 @@ interface Props {
   poseMode: boolean;
   onSelect: (id?: string, extend?: boolean) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
+  onMoveActorPathPoint: (
+    id: string,
+    index: number,
+    point: { x: number; z: number },
+  ) => void;
   onPoseJoints: (id: string, joints: MannequinJoints) => void;
   onAddWall: (
     start: { x: number; z: number },
@@ -478,6 +485,136 @@ function SelectedObject({
   );
 }
 
+function ActorRoute({
+  actor,
+  start,
+  path,
+  editable,
+  items,
+  onMovePoint,
+  onDragChange,
+}: {
+  actor: SceneItem;
+  start: ActorMark;
+  path: ActorPath;
+  editable: boolean;
+  items: SceneItem[];
+  onMovePoint: (index: number, point: { x: number; z: number }) => void;
+  onDragChange: (dragging: boolean) => void;
+}) {
+  const [drag, setDrag] = useState<{
+    index: number;
+    point: { x: number; z: number };
+  } | null>(null);
+  const points = [...path.waypoints, path.end].map((point, index) =>
+    drag?.index === index ? { ...point, ...drag.point } : point,
+  );
+  const groundPoint = (event: ThreeEvent<PointerEvent>) => {
+    const intersection = new THREE.Vector3();
+    event.ray.intersectPlane(
+      new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+      intersection,
+    );
+    return snapWallPoint(intersection, items);
+  };
+  return (
+    <group>
+      <Line
+        points={[start, ...points].map(
+          (point) => [point.x, 0.075, point.z] as [number, number, number],
+        )}
+        color="#4b9e97"
+        lineWidth={2}
+        raycast={() => null}
+      />
+      {points.map((point, index) => {
+        const isEnd = index === path.waypoints.length;
+        return (
+          <group key={index}>
+            <mesh
+              position={[point.x, editable ? 0.16 : 0.085, point.z]}
+              onPointerDown={
+                editable
+                  ? (event) => {
+                      event.stopPropagation();
+                      (event.target as Element).setPointerCapture(
+                        event.pointerId,
+                      );
+                      setDrag({ index, point: { x: point.x, z: point.z } });
+                      onDragChange(true);
+                    }
+                  : undefined
+              }
+              onPointerMove={
+                editable
+                  ? (event) => {
+                      if (drag?.index !== index) return;
+                      event.stopPropagation();
+                      setDrag({ index, point: groundPoint(event) });
+                    }
+                  : undefined
+              }
+              onPointerUp={
+                editable
+                  ? (event) => {
+                      if (drag?.index !== index) return;
+                      event.stopPropagation();
+                      (event.target as Element).releasePointerCapture(
+                        event.pointerId,
+                      );
+                      const next = groundPoint(event);
+                      setDrag(null);
+                      onDragChange(false);
+                      const original = path.waypoints[index] ?? path.end;
+                      if (next.x !== original.x || next.z !== original.z)
+                        onMovePoint(index, next);
+                    }
+                  : undefined
+              }
+              onPointerCancel={() => {
+                setDrag(null);
+                onDragChange(false);
+              }}
+            >
+              <cylinderGeometry
+                args={
+                  editable ? [0.18, 0.18, 0.045, 24] : [0.08, 0.08, 0.03, 16]
+                }
+              />
+              <meshBasicMaterial
+                color={isEnd ? "#ee8f46" : "#4b9e97"}
+                depthTest={false}
+              />
+            </mesh>
+            {editable && (
+              <>
+                <mesh
+                  position={[point.x, 0.19, point.z]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  raycast={() => null}
+                >
+                  <ringGeometry args={[0.19, 0.23, 28]} />
+                  <meshBasicMaterial
+                    color={isEnd ? "#65350f" : "#174e4a"}
+                    side={THREE.DoubleSide}
+                    depthTest={false}
+                  />
+                </mesh>
+                <PlanLabel
+                  text={`${actor.name} ${isEnd ? "end" : index + 1}`}
+                  x={point.x + 0.6}
+                  z={point.z - 0.34}
+                  color={isEnd ? "#65350f" : "#174e4a"}
+                />
+              </>
+            )}
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 function StageContent({
   scene,
   shot,
@@ -488,6 +625,7 @@ function StageContent({
   poseMode,
   onSelect,
   onMove,
+  onMoveActorPathPoint,
   onPoseJoints,
   onAddWall,
   onAddRoom,
@@ -500,6 +638,7 @@ function StageContent({
   lightSample,
   onLightSample,
 }: Omit<Props, "captureRef">) {
+  const [routeDragging, setRouteDragging] = useState<string | null>(null);
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
   const visualItems = scene.items.map((item) => {
     if (item.kind !== "actor") return item;
@@ -1131,27 +1270,27 @@ function StageContent({
           if (!actor || actor.hidden) return null;
           const start = shot?.actorMarks?.[actorId] ?? actor;
           return (
-            <group key={`actor-path-${actorId}`}>
-              <Line
-                points={[start, ...path.waypoints, path.end].map(
-                  (point) =>
-                    [point.x, 0.075, point.z] as [number, number, number],
-                )}
-                color="#4b9e97"
-                lineWidth={2}
-                raycast={() => null}
-              />
-              {[...path.waypoints, path.end].map((point, index) => (
-                <mesh
-                  key={index}
-                  position={[point.x, 0.085, point.z]}
-                  raycast={() => null}
-                >
-                  <sphereGeometry args={[0.08, 12, 8]} />
-                  <meshBasicMaterial color="#4b9e97" />
-                </mesh>
-              ))}
-            </group>
+            <ActorRoute
+              key={`actor-path-${shot?.id}-${actorId}`}
+              actor={actor}
+              start={start}
+              path={path}
+              editable={
+                mode === "plan" &&
+                tool === "select" &&
+                selectedId === actorId &&
+                selectedIds.length === 1 &&
+                !actor.locked &&
+                moveProgress === 0
+              }
+              items={scene.items}
+              onMovePoint={(index, point) =>
+                onMoveActorPathPoint(actorId, index, point)
+              }
+              onDragChange={(dragging) =>
+                setRouteDragging(dragging ? `${shot?.id}:${actorId}` : null)
+              }
+            />
           );
         })}
       {mode !== "camera" && cameraItem && shot?.cameraEnd && (
@@ -1190,7 +1329,9 @@ function StageContent({
       )}
       {mode !== "camera" && (
         <OrbitControls
-          enabled={tool === "select"}
+          enabled={
+            tool === "select" && routeDragging !== `${shot?.id}:${selectedId}`
+          }
           enableRotate={mode !== "plan" && !poseMode}
           enablePan={!poseMode}
           target={

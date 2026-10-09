@@ -60,6 +60,7 @@ import {
   wallOpenings,
   addWallOpening,
   addActorWaypoint,
+  moveActorPathPoint,
   removeActorWaypoint,
   actorPathLegs,
   replaceWallOpening,
@@ -1121,6 +1122,24 @@ function App() {
     else delete actorPaths[actorId];
     updateShot({ actorPaths });
     resetMove();
+  }
+
+  function moveActorRoutePoint(
+    actorId: string,
+    index: number,
+    point: { x: number; z: number },
+  ) {
+    const actor = stageScene.items.find((item) => item.id === actorId);
+    const path = shot?.actorPaths?.[actorId];
+    if (
+      !actor ||
+      actor.kind !== "actor" ||
+      actor.hidden ||
+      actor.locked ||
+      !path
+    )
+      return;
+    updateActorPath(actorId, moveActorPathPoint(path, index, point));
   }
 
   function updateActorJoints(actorId: string, joints?: MannequinJoints) {
@@ -2452,7 +2471,7 @@ function App() {
                 className={lightTraceVisible && mode === "plan" ? "active" : ""}
                 aria-label="Trace light on floor plan"
                 aria-pressed={lightTraceVisible && mode === "plan"}
-                title="Estimated direct illumination with wall occlusion"
+                title="Estimated direct illumination with wall and solid-prop occlusion"
                 onClick={() => {
                   setMode("plan");
                   setTool("select");
@@ -2572,6 +2591,7 @@ function App() {
               }
               onSelect={selectObject}
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
+              onMoveActorPathPoint={moveActorRoutePoint}
               onPoseJoints={updateActorJoints}
               onAddWall={addWall}
               onAddRoom={addRoom}
@@ -2664,19 +2684,25 @@ function App() {
             <div className="stage-hint">
               {poseMode && selected?.kind === "actor" && mode === "stage"
                 ? "Drag amber joints · head and shoulders move in two directions · scroll to zoom"
-                : tool === "wall" && mode === "plan"
-                  ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
-                  : tool === "room" && mode === "plan"
-                    ? "Drag two opposite corners to draw a measured room"
-                    : tool === "polygon" && mode === "plan"
-                      ? "Click room corners · click the first point or press Enter to close · Escape to cancel"
-                      : tool === "corner" && mode === "plan"
-                        ? "Drag an amber corner to reshape connected walls"
-                        : tool === "calibrate" && mode === "plan"
-                          ? "Click two points on the imported plan, then enter their known distance"
-                          : mode === "camera"
-                            ? "Shot preview · select 3D stage to edit"
-                            : "Click an object to select · drag the arrows to move · scroll to zoom"}
+                : mode === "plan" &&
+                    tool === "select" &&
+                    selected?.kind === "actor" &&
+                    !selected.locked &&
+                    shot?.actorPaths?.[selected.id]
+                  ? "Drag numbered route points or the amber end mark · snaps to walls or 0.25 m"
+                  : tool === "wall" && mode === "plan"
+                    ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
+                    : tool === "room" && mode === "plan"
+                      ? "Drag two opposite corners to draw a measured room"
+                      : tool === "polygon" && mode === "plan"
+                        ? "Click room corners · click the first point or press Enter to close · Escape to cancel"
+                        : tool === "corner" && mode === "plan"
+                          ? "Drag an amber corner to reshape connected walls"
+                          : tool === "calibrate" && mode === "plan"
+                            ? "Click two points on the imported plan, then enter their known distance"
+                            : mode === "camera"
+                              ? "Shot preview · select 3D stage to edit"
+                              : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
             {mode === "plan" && lightTraceVisible && (
               <div
@@ -2688,7 +2714,9 @@ function App() {
                 <span>
                   5 lx <b>50</b> <b>200</b> 500+ lx
                 </span>
-                <small>Fixture beams, distance falloff and wall openings</small>
+                <small>
+                  Fixture beams, falloff, wall openings and solid props
+                </small>
                 {lightReading && currentLightSample ? (
                   <div className="light-meter">
                     <div className="light-meter-total">
@@ -4304,11 +4332,14 @@ function App() {
                         floorIlluminance(
                           selected,
                           lightAimPoint(selected),
-                          scene.items.filter((item) => item.kind === "wall"),
+                          stageScene.items.filter(
+                            (item) => item.kind === "wall",
+                          ),
+                          stageScene.items,
                         ),
                       )}{" "}
-                      lx estimated at the floor aim point · direct light, walls
-                      and openings only.
+                      lx estimated at the floor aim point · direct light with
+                      walls, openings and approximate solid-prop occlusion.
                     </p>
                     <label className="full-field">
                       <span>Color</span>
