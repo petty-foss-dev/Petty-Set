@@ -50,6 +50,56 @@ export function rectangularRoom(
   return [...items, ...additions];
 }
 
+export function polygonRoom(
+  items: SceneItem[],
+  points: PlanPoint[],
+): SceneItem[] {
+  if (points.length < 3) return items;
+  for (let index = 0; index < points.length; index++) {
+    const next = (index + 1) % points.length;
+    if (
+      Math.hypot(
+        points[next].x - points[index].x,
+        points[next].z - points[index].z,
+      ) < 0.25
+    )
+      return items;
+    for (let other = index + 2; other < points.length; other++) {
+      const otherNext = (other + 1) % points.length;
+      if (otherNext === index) continue;
+      if (
+        intersection(
+          points[index],
+          points[next],
+          points[other],
+          points[otherNext],
+        )
+      )
+        return items;
+    }
+  }
+  const area =
+    Math.abs(
+      points.reduce((sum, point, index) => {
+        const next = points[(index + 1) % points.length];
+        return sum + point.x * next.z - next.x * point.z;
+      }, 0),
+    ) / 2;
+  if (area < 0.25) return items;
+  return points.reduce((result, point, index) => {
+    const next = points[(index + 1) % points.length];
+    const wall = wallBetween(
+      point,
+      next,
+      result.filter((item) => item.kind === "wall").length + 1,
+    );
+    return insertPlanWall(result, {
+      ...wall,
+      name: `Room wall ${result.length + 1}`,
+    });
+  }, items);
+}
+
 export function moveSharedCorner(
   items: SceneItem[],
   from: PlanPoint,
@@ -209,13 +259,55 @@ export function insertPlanWall(
       const point = intersection(start, end, a, b);
       return point ? [{ wallId: item.id, point }] : [];
     });
+  const length = Math.hypot(end.x - start.x, end.z - start.z);
+  const along = (point: PlanPoint) =>
+    ((point.x - start.x) * (end.x - start.x) +
+      (point.z - start.z) * (end.z - start.z)) /
+    length ** 2;
+  const collinear = items
+    .filter((item) => item.kind === "wall")
+    .flatMap((item) => {
+      const [a, b] = wallEndpoints(item);
+      const cross = (point: PlanPoint) =>
+        (point.x - start.x) * (end.z - start.z) -
+        (point.z - start.z) * (end.x - start.x);
+      if (Math.abs(cross(a)) > 0.01 || Math.abs(cross(b)) > 0.01) return [];
+      const low = Math.max(0, Math.min(along(a), along(b)));
+      const high = Math.min(1, Math.max(along(a), along(b)));
+      return high - low > 1e-6 ? [{ low, high }] : [];
+    });
   let result = items;
+  for (const point of [start, end]) {
+    result = result.flatMap((item) => {
+      if (item.kind !== "wall") return [item];
+      const [a, b] = wallEndpoints(item);
+      const distance = Math.hypot(b.x - a.x, b.z - a.z);
+      const offset = Math.hypot(point.x - a.x, point.z - a.z);
+      if (
+        Math.abs(offset + Math.hypot(point.x - b.x, point.z - b.z) - distance) >
+        0.01
+      )
+        return [item];
+      return splitAt(item, point);
+    });
+  }
   for (const { wallId, point } of crossing) {
     result = result.flatMap((item) =>
       item.id === wallId ? splitAt(item, point) : [item],
     );
   }
-  const sorted = [start, ...crossing.map((entry) => entry.point), end]
+  const overlapPoints = collinear.flatMap(({ low, high }) =>
+    [low, high].map((t) => ({
+      x: start.x + (end.x - start.x) * t,
+      z: start.z + (end.z - start.z) * t,
+    })),
+  );
+  const sorted = [
+    start,
+    ...crossing.map((entry) => entry.point),
+    ...overlapPoints,
+    end,
+  ]
     .sort(
       (a, b) =>
         Math.hypot(a.x - start.x, a.z - start.z) -
@@ -227,6 +319,13 @@ export function insertPlanWall(
   const segments = sorted.slice(0, -1).flatMap((point, index) => {
     const next = sorted[index + 1];
     if (Math.hypot(next.x - point.x, next.z - point.z) < 0.25) return [];
+    const middle = (along(point) + along(next)) / 2;
+    if (
+      collinear.some(
+        ({ low, high }) => middle > low + 1e-6 && middle < high - 1e-6,
+      )
+    )
+      return [];
     const geometry = wallBetween(point, next, 1);
     return [
       {

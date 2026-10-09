@@ -93,6 +93,7 @@ import {
   moveSharedCorner,
   planRooms,
   rectangularRoom,
+  polygonRoom,
   splitWall,
 } from "./floorplan";
 import * as THREE from "three";
@@ -200,7 +201,7 @@ function App() {
     z: number;
   } | null>(null);
   const [tool, setTool] = useState<
-    "select" | "wall" | "room" | "corner" | "calibrate"
+    "select" | "wall" | "room" | "polygon" | "corner" | "calibrate"
   >("select");
   const [calibrationPoints, setCalibrationPoints] = useState<
     { x: number; z: number }[]
@@ -564,6 +565,13 @@ function App() {
     updateScene((current) => ({
       ...current,
       items: rectangularRoom(current.items, start, end),
+    }));
+  }
+
+  function addPolygonRoom(points: { x: number; z: number }[]) {
+    updateScene((current) => ({
+      ...current,
+      items: polygonRoom(current.items, points),
     }));
   }
 
@@ -1945,6 +1953,18 @@ function App() {
                 <Square size={15} /> Room
               </button>
               <button
+                className={tool === "polygon" ? "active" : ""}
+                aria-label="Draw shaped room"
+                title="Click corners to draw a shaped room; click the first corner or press Enter to finish"
+                onClick={() => {
+                  setTool("polygon");
+                  setMode("plan");
+                  setSelectedId(undefined);
+                }}
+              >
+                <PenLine size={15} /> Shaped room
+              </button>
+              <button
                 className={tool === "corner" ? "active" : ""}
                 aria-label="Edit corners"
                 title="Drag a shared wall corner in plan view"
@@ -2013,6 +2033,7 @@ function App() {
               onPoseJoints={updateActorJoints}
               onAddWall={addWall}
               onAddRoom={addRoom}
+              onAddPolygonRoom={addPolygonRoom}
               onMoveCorner={moveCorner}
               calibrationPoints={calibrationPoints}
               onCalibrationPoint={(point) =>
@@ -2105,13 +2126,15 @@ function App() {
                   ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
                   : tool === "room" && mode === "plan"
                     ? "Drag two opposite corners to draw a measured room"
-                    : tool === "corner" && mode === "plan"
-                      ? "Drag an amber corner to reshape connected walls"
-                      : tool === "calibrate" && mode === "plan"
-                        ? "Click two points on the imported plan, then enter their known distance"
-                        : mode === "camera"
-                          ? "Shot preview · select 3D stage to edit"
-                          : "Click an object to select · drag the arrows to move · scroll to zoom"}
+                    : tool === "polygon" && mode === "plan"
+                      ? "Click room corners · click the first point or press Enter to close · Escape to cancel"
+                      : tool === "corner" && mode === "plan"
+                        ? "Drag an amber corner to reshape connected walls"
+                        : tool === "calibrate" && mode === "plan"
+                          ? "Click two points on the imported plan, then enter their known distance"
+                          : mode === "camera"
+                            ? "Shot preview · select 3D stage to edit"
+                            : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
             {mode === "plan" && lightTraceVisible && (
               <div

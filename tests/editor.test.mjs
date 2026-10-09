@@ -39,6 +39,7 @@ import {
   moveSharedCorner,
   planRooms,
   rectangularRoom,
+  polygonRoom,
   splitWall,
 } from "../src/floorplan.ts";
 
@@ -60,6 +61,41 @@ test("rectangular rooms share walls and report enclosed floor area", () => {
     2,
   );
   assert.equal(planRooms(moved)[0].area, 13.5);
+});
+
+test("shaped rooms close through shared and partially overlapping walls", () => {
+  const first = rectangularRoom([], { x: 0, z: 0 }, { x: 4, z: 3 });
+  const joined = polygonRoom(first, [
+    { x: 4, z: 1 },
+    { x: 7, z: 1 },
+    { x: 7, z: 3 },
+    { x: 4, z: 3 },
+  ]);
+  assert.deepEqual(
+    planRooms(joined)
+      .map((room) => room.area)
+      .sort((a, b) => a - b),
+    [6, 12],
+  );
+  const repeated = polygonRoom(joined, [
+    { x: 4, z: 1 },
+    { x: 7, z: 1 },
+    { x: 7, z: 3 },
+    { x: 4, z: 3 },
+  ]);
+  assert.equal(repeated.length, joined.length);
+  assert.equal(
+    polygonRoom(
+      [],
+      [
+        { x: 0, z: 0 },
+        { x: 3, z: 3 },
+        { x: 0, z: 3 },
+        { x: 3, z: 0 },
+      ],
+    ).length,
+    0,
+  );
 });
 
 test("floor plan export includes room area, openings and scale", () => {

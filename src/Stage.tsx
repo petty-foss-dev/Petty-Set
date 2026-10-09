@@ -104,7 +104,7 @@ interface Props {
   shot?: Shot;
   selectedId?: string;
   mode: ViewMode;
-  tool: "select" | "wall" | "room" | "corner" | "calibrate";
+  tool: "select" | "wall" | "room" | "polygon" | "corner" | "calibrate";
   poseMode: boolean;
   onSelect: (id?: string) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
@@ -114,6 +114,7 @@ interface Props {
     end: { x: number; z: number },
   ) => void;
   onAddRoom: (start: PlanPoint, end: PlanPoint) => void;
+  onAddPolygonRoom: (points: PlanPoint[]) => void;
   onMoveCorner: (from: PlanPoint, to: PlanPoint) => void;
   calibrationPoints: PlanPoint[];
   onCalibrationPoint: (point: PlanPoint) => void;
@@ -398,6 +399,7 @@ function StageContent({
   onPoseJoints,
   onAddWall,
   onAddRoom,
+  onAddPolygonRoom,
   onMoveCorner,
   calibrationPoints,
   onCalibrationPoint,
@@ -461,6 +463,23 @@ function StageContent({
     start: PlanPoint;
     end: PlanPoint;
   } | null>(null);
+  const [polygonPoints, setPolygonPoints] = useState<PlanPoint[]>([]);
+  const [polygonCursor, setPolygonCursor] = useState<PlanPoint | null>(null);
+  useEffect(() => {
+    if (tool !== "polygon" || mode !== "plan") return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPolygonPoints([]);
+        setPolygonCursor(null);
+      } else if (event.key === "Enter" && polygonPoints.length >= 3) {
+        onAddPolygonRoom(polygonPoints);
+        setPolygonPoints([]);
+        setPolygonCursor(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tool, mode, polygonPoints, onAddPolygonRoom]);
   const [cornerDraft, setCornerDraft] = useState<{
     from: PlanPoint;
     to: PlanPoint;
@@ -580,6 +599,31 @@ function StageContent({
             onSelect(undefined);
             return;
           }
+          if (tool === "polygon" && mode === "plan") {
+            event.stopPropagation();
+            const point = snap(event.point);
+            if (
+              polygonPoints.length >= 3 &&
+              Math.hypot(
+                point.x - polygonPoints[0].x,
+                point.z - polygonPoints[0].z,
+              ) < 0.3
+            ) {
+              onAddPolygonRoom(polygonPoints);
+              setPolygonPoints([]);
+              setPolygonCursor(null);
+            } else if (
+              polygonPoints.length === 0 ||
+              Math.hypot(
+                point.x - polygonPoints.at(-1)!.x,
+                point.z - polygonPoints.at(-1)!.z,
+              ) >= 0.25
+            ) {
+              setPolygonPoints([...polygonPoints, point]);
+              setPolygonCursor(point);
+            }
+            return;
+          }
           if ((tool === "wall" || tool === "room") && mode === "plan") {
             event.stopPropagation();
             (event.target as Element).setPointerCapture(event.pointerId);
@@ -591,6 +635,8 @@ function StageContent({
         onPointerMove={(event) => {
           if (wallDraft) setWallDraft({ ...wallDraft, end: snap(event.point) });
           if (roomDraft) setRoomDraft({ ...roomDraft, end: snap(event.point) });
+          if (tool === "polygon" && polygonPoints.length)
+            setPolygonCursor(snap(event.point));
         }}
         onPointerUp={(event) => {
           if (!wallDraft && !roomDraft) return;
@@ -729,6 +775,29 @@ function StageContent({
           lineWidth={3}
           raycast={() => null}
         />
+      )}
+      {tool === "polygon" && mode === "plan" && polygonPoints.length > 0 && (
+        <>
+          <Line
+            points={[
+              ...polygonPoints,
+              ...(polygonCursor ? [polygonCursor] : []),
+            ].map((point) => [point.x, 0.14, point.z])}
+            color="#eb8950"
+            lineWidth={3}
+            raycast={() => null}
+          />
+          {polygonPoints.map((point, index) => (
+            <mesh
+              key={index}
+              position={[point.x, 0.15, point.z]}
+              raycast={() => null}
+            >
+              <sphereGeometry args={[index === 0 ? 0.13 : 0.08, 12, 8]} />
+              <meshBasicMaterial color={index === 0 ? "#f6d59a" : "#eb8950"} />
+            </mesh>
+          ))}
+        </>
       )}
       {mode === "plan" &&
         tool === "corner" &&
