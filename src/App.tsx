@@ -4843,6 +4843,9 @@ function Editor({
                       setMoveProgress(0);
                       updateShot({
                         cameraWaypoints: event.target.checked ? [] : undefined,
+                        cameraMoveStyle: event.target.checked
+                          ? "linear"
+                          : undefined,
                         cameraEnd:
                           event.target.checked && cameraItem
                             ? {
@@ -4859,6 +4862,22 @@ function Editor({
                 </label>
                 {shot.cameraEnd && (
                   <>
+                    <label>
+                      Path style
+                      <select
+                        aria-label="Camera path style"
+                        value={shot.cameraMoveStyle ?? "linear"}
+                        onChange={(event) =>
+                          updateShot({
+                            cameraMoveStyle: event.target.value as
+                              "linear" | "smooth",
+                          })
+                        }
+                      >
+                        <option value="linear">Straight segments</option>
+                        <option value="smooth">Smooth through waypoints</option>
+                      </select>
+                    </label>
                     {(shot.cameraWaypoints ?? []).map((point, index) => (
                       <div className="waypoint-fields" key={index}>
                         <div className="waypoint-heading">

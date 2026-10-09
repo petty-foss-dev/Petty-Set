@@ -364,6 +364,7 @@ export interface Shot {
   actorJoints?: Record<string, MannequinJoints>;
   actorActions?: Record<string, ActorAction>;
   cameraEnd?: { x: number; z: number; height: number; rotation: number };
+  cameraMoveStyle?: "linear" | "smooth";
   cameraWaypoints?: {
     x: number;
     z: number;
@@ -936,6 +937,11 @@ export function isProject(value: unknown): value is Project {
           ))
       )
         return false;
+      if (
+        shot.cameraMoveStyle !== undefined &&
+        !["linear", "smooth"].includes(shot.cameraMoveStyle as string)
+      )
+        return false;
       shotIds.add(shot.id);
     }
     if (
@@ -1100,6 +1106,61 @@ export function actorPathLegs(path: ActorPath): ActorPathLeg[] {
       easing: "linear" as const,
     }))
   );
+}
+
+export function cameraPoseAt(
+  start: Pick<SceneItem, "x" | "z" | "height" | "rotation">,
+  shot: Pick<Shot, "cameraEnd" | "cameraWaypoints" | "cameraMoveStyle">,
+  progress: number,
+) {
+  const points = [
+    start,
+    ...(shot.cameraWaypoints ?? []),
+    shot.cameraEnd ?? start,
+  ];
+  const travel = Math.min(1, Math.max(0, progress)) * (points.length - 1);
+  const segment = Math.min(points.length - 2, Math.floor(travel));
+  const fraction = travel - segment;
+  const from = points[segment];
+  const to = points[segment + 1];
+  const nearestAngle = (base: number, angle: number) =>
+    base + ((((angle - base) % 360) + 540) % 360) - 180;
+  const endAngle = nearestAngle(from.rotation, to.rotation);
+  if (shot.cameraMoveStyle !== "smooth")
+    return {
+      x: from.x + (to.x - from.x) * fraction,
+      z: from.z + (to.z - from.z) * fraction,
+      height: from.height + (to.height - from.height) * fraction,
+      rotation: from.rotation + (endAngle - from.rotation) * fraction,
+    };
+
+  const before = points[Math.max(0, segment - 1)];
+  const after = points[Math.min(points.length - 1, segment + 2)];
+  const curve = (a: number, b: number, c: number, d: number) => {
+    const t2 = fraction * fraction;
+    const t3 = t2 * fraction;
+    return (
+      0.5 *
+      (2 * b +
+        (-a + c) * fraction +
+        (2 * a - 5 * b + 4 * c - d) * t2 +
+        (-a + 3 * b - 3 * c + d) * t3)
+    );
+  };
+  return {
+    x: curve(before.x, from.x, to.x, after.x),
+    z: curve(before.z, from.z, to.z, after.z),
+    height: Math.max(
+      0.05,
+      curve(before.height, from.height, to.height, after.height),
+    ),
+    rotation: curve(
+      nearestAngle(from.rotation, before.rotation),
+      from.rotation,
+      endAngle,
+      nearestAngle(endAngle, after.rotation),
+    ),
+  };
 }
 
 export function moveActorPathPoint(

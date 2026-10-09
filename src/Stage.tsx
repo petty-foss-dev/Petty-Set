@@ -11,6 +11,7 @@ import {
 import * as THREE from "three";
 import {
   actorPoseAt,
+  cameraPoseAt,
   mannequinJointsForPose,
   snapWallPoint,
   wallEndpoints,
@@ -327,16 +328,14 @@ function CameraRig({
   poseTarget,
   cameraItem,
   aspectRatio,
-  cameraEnd,
-  cameraWaypoints,
+  shot,
   moveProgress,
 }: {
   mode: ViewMode;
   poseTarget?: SceneItem;
   cameraItem?: SceneItem;
   aspectRatio: AspectRatio;
-  cameraEnd?: Shot["cameraEnd"];
-  cameraWaypoints?: Shot["cameraWaypoints"];
+  shot?: Shot;
   moveProgress: number;
 }) {
   const { camera, size } = useThree();
@@ -378,27 +377,12 @@ function CameraRig({
       ) *
       180) /
     Math.PI;
-  const poses = [
-    cameraItem,
-    ...(cameraWaypoints ?? []),
-    cameraEnd ?? cameraItem,
-  ];
-  const travel = Math.min(poses.length - 1, moveProgress * (poses.length - 1));
-  const segment = Math.min(poses.length - 2, Math.floor(travel));
-  const fraction = travel - segment;
-  const from = poses[segment],
-    to = poses[segment + 1];
-  const x = THREE.MathUtils.lerp(from.x, to.x, fraction);
-  const z = THREE.MathUtils.lerp(from.z, to.z, fraction);
-  const height = THREE.MathUtils.lerp(from.height, to.height, fraction);
-  const delta =
-    THREE.MathUtils.euclideanModulo(to.rotation - from.rotation + 180, 360) -
-    180;
-  const yaw = ((from.rotation + delta * fraction) * Math.PI) / 180;
+  const pose = cameraPoseAt(cameraItem, shot ?? {}, moveProgress);
+  const yaw = (pose.rotation * Math.PI) / 180;
   return (
     <PerspectiveCamera
       makeDefault
-      position={[x, height, z]}
+      position={[pose.x, pose.height, pose.z]}
       rotation={[0, yaw, 0]}
       fov={fov}
       near={0.05}
@@ -792,8 +776,7 @@ function StageContent({
         poseTarget={poseTarget}
         cameraItem={cameraItem}
         aspectRatio={shot?.aspectRatio ?? "16:9"}
-        cameraEnd={shot?.cameraEnd}
-        cameraWaypoints={shot?.cameraWaypoints}
+        shot={shot}
         moveProgress={moveProgress}
       />
       <ambientLight intensity={0.18 + daylight * 0.3} />
@@ -1296,11 +1279,9 @@ function StageContent({
       {mode !== "camera" && cameraItem && shot?.cameraEnd && (
         <group>
           <Line
-            points={[
-              cameraItem,
-              ...(shot.cameraWaypoints ?? []),
-              shot.cameraEnd,
-            ].map(
+            points={Array.from({ length: 49 }, (_, index) =>
+              cameraPoseAt(cameraItem, shot, index / 48),
+            ).map(
               (point) => [point.x, 0.055, point.z] as [number, number, number],
             )}
             color="#df7540"

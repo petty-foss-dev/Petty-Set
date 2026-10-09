@@ -10,6 +10,7 @@ import {
   wallBetween,
   wallEndpoints,
   actorPoseAt,
+  cameraPoseAt,
   addActorWaypoint,
   moveActorPathPoint,
   removeActorWaypoint,
@@ -429,6 +430,34 @@ test("camera paths require finite end coordinates and positive height", () => {
   ];
   assert.equal(isProject(project), true);
   project.scenes[0].shots[0].cameraWaypoints[0].height = -1;
+  assert.equal(isProject(project), false);
+});
+
+test("smooth camera movement passes through saved marks and turns continuously", () => {
+  const start = { x: 0, z: 0, height: 1.5, rotation: 350 };
+  const shot = {
+    cameraWaypoints: [{ x: 2, z: 0, height: 1.5, rotation: 10 }],
+    cameraEnd: { x: 2, z: 2, height: 1.7, rotation: 90 },
+    cameraMoveStyle: "smooth",
+  };
+  assert.deepEqual(cameraPoseAt(start, shot, 0), start);
+  assert.deepEqual(cameraPoseAt(start, shot, 0.5), {
+    ...shot.cameraWaypoints[0],
+    rotation: 10,
+  });
+  const smooth = cameraPoseAt(start, shot, 0.25);
+  const linear = cameraPoseAt(
+    start,
+    { ...shot, cameraMoveStyle: "linear" },
+    0.25,
+  );
+  assert.notEqual(smooth.z, linear.z);
+  assert.ok(smooth.rotation > 350 && smooth.rotation < 370);
+  assert.ok(Math.abs(cameraPoseAt(start, shot, 1).x - shot.cameraEnd.x) < 1e-9);
+  const project = sampleProject();
+  project.scenes[0].shots[0].cameraMoveStyle = "smooth";
+  assert.equal(isProject(project), true);
+  project.scenes[0].shots[0].cameraMoveStyle = "teleport";
   assert.equal(isProject(project), false);
 });
 
