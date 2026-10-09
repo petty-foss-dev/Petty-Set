@@ -138,6 +138,7 @@ function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [mode, setMode] = useState<ViewMode>("stage");
   const [tool, setTool] = useState<"select" | "wall">("select");
+  const [poseMode, setPoseMode] = useState(false);
   const [order, setOrder] = useState<"story" | "shoot">("story");
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -1226,6 +1227,22 @@ function App() {
               >
                 <PenLine size={15} /> Draw wall
               </button>
+              {selected?.kind === "actor" &&
+                !selected.locked &&
+                mode === "stage" && (
+                  <button
+                    className={poseMode ? "active" : ""}
+                    aria-label="Pose actor in 3D"
+                    title="Drag the amber joints to pose this actor"
+                    aria-pressed={poseMode}
+                    onClick={() => {
+                      setTool("select");
+                      setPoseMode((value) => !value);
+                    }}
+                  >
+                    <UserRound size={15} /> Pose
+                  </button>
+                )}
             </div>
             <div className="view-label">
               {mode === "camera"
@@ -1251,8 +1268,15 @@ function App() {
               selectedId={moveProgress > 0 ? undefined : selectedId}
               mode={mode}
               tool={tool}
+              poseMode={
+                poseMode &&
+                selected?.kind === "actor" &&
+                !selected.locked &&
+                mode === "stage"
+              }
               onSelect={setSelectedId}
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
+              onPoseJoints={updateActorJoints}
               onAddWall={addWall}
               captureRef={captureRef}
               moveProgress={moveProgress}
@@ -1308,11 +1332,13 @@ function App() {
               </svg>
             )}
             <div className="stage-hint">
-              {tool === "wall" && mode === "plan"
-                ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
-                : mode === "camera"
-                  ? "Shot preview · select 3D stage to edit"
-                  : "Click an object to select · drag the arrows to move · scroll to zoom"}
+              {poseMode && selected?.kind === "actor" && mode === "stage"
+                ? "Drag amber joints · head and shoulders move in two directions · scroll to zoom"
+                : tool === "wall" && mode === "plan"
+                  ? "Drag on the plan to draw a wall · snaps to wall ends or 0.25 m"
+                  : mode === "camera"
+                    ? "Shot preview · select 3D stage to edit"
+                    : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
             {(mode === "camera" || (mode === "stage" && hasMotion)) && (
               <div className="camera-actions">

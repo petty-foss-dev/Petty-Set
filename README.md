@@ -23,6 +23,8 @@ Open the address printed by Vite. The app stores the current project in this bro
 
 ![Posable wooden mannequin with joint controls](docs/screenshots/posable-mannequin.jpg)
 
+![Direct 3D joint posing](docs/screenshots/direct-joint-posing.jpg)
+
 ## Current features
 
 - One film with multiple scenes; each scene has a separate editable 3D set.
@@ -34,7 +36,7 @@ Open the address printed by Vite. The app stores the current project in this bro
 - Import self-contained glTF 2.0 `.glb` assets up to 1 MB. Models are embedded in local project data and JSON exports; browser storage is capped at roughly 3 MB of project JSON.
 - Switch lights between softbox, spotlight, and practical bulb previews. Set actor wood finish and choose a cinema, mirrorless, or broadcast camera body with sensor and lens presets.
 - Undo and redo project edits; duplicate, hide, and lock set objects.
-- Set actor positions, facing, and twelve mannequin joint angles per shot, then add an end mark and waypoints for each actor. Start from neutral, greeting, or pointing and fine tune the head, shoulders, elbows, hips, and knees. Preview actor movement with the shot timeline in stage, plan, or camera view; the mannequin shows a simple walk swing during playback.
+- Set actor positions, facing, and twelve mannequin joint angles per shot, then add an end mark and waypoints for each actor. Start from neutral, greeting, or pointing and fine tune the head, shoulders, elbows, hips, and knees with inspector sliders or by dragging amber joint handles in the 3D stage. Preview actor movement with the shot timeline in stage, plan, or camera view; the mannequin shows a simple walk swing during playback.
 - Import an image floor plan as a set reference; set its width, height, position, rotation, and opacity.
 - Switch between orbiting 3D stage, top plan, and camera view.
 - Add shots with separate cameras; choose a sensor gate, focal length, aperture, focus distance, and shot aspect ratio. The camera view shows framing guides and approximate depth-of-field limits.
@@ -50,7 +52,7 @@ This is an early editor, not yet a feature-complete Lensflare equivalent. The ne
 
 1. Modeling tools: connected wall corners, room scale controls, broader snapping, grouping, and a larger original asset catalog.
 2. Cinematography: named camera bodies and lenses, visual depth of field, curved camera paths, collision-aware movement, and take variants.
-3. Performance planning: direct viewport joint handles, a saved pose library, an action library, route timing/easing and collision checks, more lighting modifiers, power routing, and alternate plans.
+3. Performance planning: inverse kinematics, a saved pose library, an action library, route timing/easing and collision checks, more lighting modifiers, power routing, and alternate plans.
 4. Production outputs: floorplan and shoot-day sheets, equipment lists, batch exports, and polished print layouts.
 5. Collaboration: project accounts, shareable review links, comments, crew roles, editing, and branding. This requires an optional server; local projects should continue to work without one.
 

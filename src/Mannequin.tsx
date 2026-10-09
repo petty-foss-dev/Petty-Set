@@ -1,7 +1,19 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import type { ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import { mannequinJointsForPose } from "./model";
+import { mannequinJointControls, mannequinJointsForPose } from "./model";
 import type { MannequinJoints, SceneItem } from "./model";
+
+type PoseHandle =
+  | "head"
+  | "leftShoulder"
+  | "rightShoulder"
+  | "leftElbow"
+  | "rightElbow"
+  | "leftHip"
+  | "rightHip"
+  | "leftKnee"
+  | "rightKnee";
 
 function turned(points: [number, number][]) {
   return new THREE.LatheGeometry(
@@ -136,10 +148,16 @@ export default function Mannequin({
   item,
   joints,
   walkPhase = 0,
+  poseHandles = false,
+  onPosePreview,
+  onPoseCommit,
 }: {
   item: SceneItem;
   joints?: MannequinJoints;
   walkPhase?: number;
+  poseHandles?: boolean;
+  onPosePreview?: (joints: MannequinJoints) => void;
+  onPoseCommit?: (joints: MannequinJoints) => void;
 }) {
   const map = useMemo(() => grainTexture(), []);
   useEffect(() => () => map.dispose(), [map]);
@@ -148,6 +166,109 @@ export default function Mannequin({
   const pose = joints ?? mannequinJointsForPose(item.mannequinPose);
   const swing = Math.sin(walkPhase);
   const radians = THREE.MathUtils.degToRad;
+  const gesture = useRef<{
+    handle: PoseHandle;
+    x: number;
+    y: number;
+    start: MannequinJoints;
+    current: MannequinJoints;
+    moved: boolean;
+  } | null>(null);
+  const moveHandle = (event: ThreeEvent<PointerEvent>) => {
+    const active = gesture.current;
+    if (!active) return;
+    event.stopPropagation();
+    const dx = event.nativeEvent.clientX - active.x;
+    const dy = event.nativeEvent.clientY - active.y;
+    const next = { ...active.start };
+    const adjust = (key: keyof MannequinJoints, delta: number) => {
+      const control = mannequinJointControls.find(
+        (value) => value.key === key,
+      )!;
+      next[key] = Math.round(
+        THREE.MathUtils.clamp(
+          active.start[key] + delta,
+          control.min,
+          control.max,
+        ),
+      );
+    };
+    switch (active.handle) {
+      case "head":
+        adjust("headTilt", dx * 0.6);
+        adjust("headNod", -dy * 0.6);
+        break;
+      case "leftShoulder":
+      case "rightShoulder": {
+        const left = active.handle === "leftShoulder";
+        adjust(left ? "leftArmLift" : "rightArmLift", dx * (left ? -0.9 : 0.9));
+        adjust(left ? "leftShoulderSwing" : "rightShoulderSwing", -dy * 0.9);
+        break;
+      }
+      case "leftElbow":
+      case "rightElbow":
+        adjust(
+          active.handle === "leftElbow" ? "leftElbowBend" : "rightElbowBend",
+          -dy,
+        );
+        break;
+      case "leftHip":
+      case "rightHip":
+        adjust(
+          active.handle === "leftHip" ? "leftHipSwing" : "rightHipSwing",
+          -dy * 0.8,
+        );
+        break;
+      case "leftKnee":
+      case "rightKnee":
+        adjust(
+          active.handle === "leftKnee" ? "leftKneeBend" : "rightKneeBend",
+          -dy,
+        );
+        break;
+    }
+    active.current = next;
+    active.moved = mannequinJointControls.some(
+      ({ key }) => next[key] !== active.start[key],
+    );
+    onPosePreview?.(next);
+  };
+  const poseHandle = (handle: PoseHandle) =>
+    poseHandles && (
+      <mesh
+        position={[0, 0, 0.12]}
+        renderOrder={10}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          (event.target as Element).setPointerCapture(event.pointerId);
+          gesture.current = {
+            handle,
+            x: event.nativeEvent.clientX,
+            y: event.nativeEvent.clientY,
+            start: { ...pose },
+            current: pose,
+            moved: false,
+          };
+        }}
+        onPointerMove={moveHandle}
+        onPointerUp={(event) => {
+          event.stopPropagation();
+          (event.target as Element).releasePointerCapture(event.pointerId);
+          const active = gesture.current;
+          gesture.current = null;
+          if (active?.moved) onPoseCommit?.(active.current);
+        }}
+        onPointerCancel={() => {
+          if (gesture.current) onPosePreview?.(gesture.current.start);
+          gesture.current = null;
+        }}
+        onPointerOver={() => (document.body.style.cursor = "grab")}
+        onPointerOut={() => (document.body.style.cursor = "")}
+      >
+        <sphereGeometry args={[0.057, 16, 12]} />
+        <meshBasicMaterial color="#f9a64b" depthTest={false} />
+      </mesh>
+    );
   return (
     <group scale={[item.width / 0.5, item.height / 1.75, item.depth / 0.4]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}>
@@ -185,6 +306,7 @@ export default function Mannequin({
         position={[0, 1.43, 0]}
         rotation={[radians(pose.headNod), 0, radians(pose.headTilt)]}
       >
+        {poseHandle("head")}
         <Piece
           geometry={head}
           position={[0, 0.12, 0]}
@@ -210,6 +332,7 @@ export default function Mannequin({
                 radians(side === -1 ? pose.leftArmLift : pose.rightArmLift),
             ]}
           >
+            {poseHandle(side === -1 ? "leftShoulder" : "rightShoulder")}
             <group position={[-side * 0.255, -1.36, 0]}>
               <Piece
                 geometry={joint}
@@ -248,6 +371,7 @@ export default function Mannequin({
                     ),
                 ]}
               >
+                {poseHandle(side === -1 ? "leftElbow" : "rightElbow")}
                 <group position={[-side * 0.3, -1.01, 0]}>
                   <Piece
                     geometry={forearm}
@@ -291,6 +415,7 @@ export default function Mannequin({
               0,
             ]}
           >
+            {poseHandle(side === -1 ? "leftHip" : "rightHip")}
             <group position={[-side * 0.105, -0.63, 0]}>
               <Piece
                 geometry={joint}
@@ -333,6 +458,7 @@ export default function Mannequin({
                   0,
                 ]}
               >
+                {poseHandle(side === -1 ? "leftKnee" : "rightKnee")}
                 <group position={[-side * 0.11, -0.29, 0]}>
                   <Piece
                     geometry={shin}

@@ -11,6 +11,7 @@ import {
 import * as THREE from "three";
 import { actorPoseAt, snapWallPoint, wallEndpoints } from "./model";
 import SetPiece from "./SetPieces";
+import Mannequin from "./Mannequin";
 import type { MannequinJoints, SceneItem, SetScene, Shot } from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
@@ -50,8 +51,10 @@ interface Props {
   selectedId?: string;
   mode: ViewMode;
   tool: "select" | "wall";
+  poseMode: boolean;
   onSelect: (id?: string) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
+  onPoseJoints: (id: string, joints: MannequinJoints) => void;
   onAddWall: (
     start: { x: number; z: number },
     end: { x: number; z: number },
@@ -62,6 +65,7 @@ interface Props {
 
 function CameraRig({
   mode,
+  poseTarget,
   cameraItem,
   aspectRatio,
   cameraEnd,
@@ -69,6 +73,7 @@ function CameraRig({
   moveProgress,
 }: {
   mode: ViewMode;
+  poseTarget?: SceneItem;
   cameraItem?: SceneItem;
   aspectRatio: AspectRatio;
   cameraEnd?: Shot["cameraEnd"];
@@ -81,11 +86,20 @@ function CameraRig({
       camera.position.set(0, 20, 0.01);
       camera.lookAt(0, 0, 0);
     } else if (mode === "stage") {
-      camera.position.set(7.5, 6.6, 8.2);
-      camera.lookAt(0, 0, 0);
+      if (poseTarget) {
+        camera.position.set(
+          poseTarget.x + 1.9,
+          poseTarget.y + 2.1,
+          poseTarget.z + 2.8,
+        );
+        camera.lookAt(poseTarget.x, poseTarget.y + 0.9, poseTarget.z);
+      } else {
+        camera.position.set(7.5, 6.6, 8.2);
+        camera.lookAt(0, 0, 0);
+      }
     }
     camera.updateProjectionMatrix();
-  }, [mode, camera]);
+  }, [mode, poseTarget, camera]);
   if (!cameraItem || mode !== "camera") return null;
   const gateFov = cameraOptics(
     cameraItem.sensor ?? "super35",
@@ -137,17 +151,41 @@ function CameraRig({
 function SelectedObject({
   item,
   actorJoints,
+  poseMode,
   mode,
   onSelect,
   onMove,
+  onPoseJoints,
 }: {
   item: SceneItem;
   actorJoints?: MannequinJoints;
+  poseMode: boolean;
   mode: ViewMode;
   onSelect: (id: string) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
+  onPoseJoints: (id: string, joints: MannequinJoints) => void;
 }) {
   const group = useRef<THREE.Group>(null);
+  const [draftJoints, setDraftJoints] = useState<MannequinJoints>();
+  if (poseMode && item.kind === "actor") {
+    return (
+      <group
+        position={[item.x, item.y, item.z]}
+        rotation={[0, (item.rotation * Math.PI) / 180, 0]}
+      >
+        <Mannequin
+          item={item}
+          joints={draftJoints ?? actorJoints}
+          poseHandles
+          onPosePreview={setDraftJoints}
+          onPoseCommit={(joints) => {
+            onPoseJoints(item.id, joints);
+            setDraftJoints(undefined);
+          }}
+        />
+      </group>
+    );
+  }
   return (
     <TransformControls
       mode="translate"
@@ -194,8 +232,10 @@ function StageContent({
   selectedId,
   mode,
   tool,
+  poseMode,
   onSelect,
   onMove,
+  onPoseJoints,
   onAddWall,
   moveProgress,
 }: Omit<Props, "captureRef">) {
@@ -209,6 +249,9 @@ function StageContent({
       ...(path ? actorPoseAt(start, path, moveProgress) : start),
     };
   });
+  const poseTarget = poseMode
+    ? visualItems.find((item) => item.id === selectedId)
+    : undefined;
   const environment = scene.environment;
   const ground = environment?.ground ?? "studio";
   const groundTexture = useMemo(
@@ -272,6 +315,7 @@ function StageContent({
     <>
       <CameraRig
         mode={mode}
+        poseTarget={poseTarget}
         cameraItem={cameraItem}
         aspectRatio={shot?.aspectRatio ?? "16:9"}
         cameraEnd={shot?.cameraEnd}
@@ -338,6 +382,7 @@ function StageContent({
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
         onPointerDown={(event) => {
+          if (poseMode) return;
           if (tool === "wall" && mode === "plan") {
             event.stopPropagation();
             (event.target as Element).setPointerCapture(event.pointerId);
@@ -467,12 +512,14 @@ function StageContent({
           (tool === "select" || mode !== "plan") &&
           !item.locked ? (
             <SelectedObject
-              key={item.id}
+              key={`${shot?.id ?? "scene"}-${item.id}`}
               item={item}
               actorJoints={shot?.actorJoints?.[item.id] ?? item.mannequinJoints}
+              poseMode={poseMode}
               mode={mode}
               onSelect={onSelect}
               onMove={onMove}
+              onPoseJoints={onPoseJoints}
             />
           ) : (
             <group
@@ -480,7 +527,7 @@ function StageContent({
               position={[item.x, item.y, item.z]}
               rotation={[0, (item.rotation * Math.PI) / 180, 0]}
               onPointerDown={(event) => {
-                if (tool !== "wall") select(event, item.id);
+                if (tool !== "wall" && !poseMode) select(event, item.id);
               }}
             >
               <SetPiece
@@ -563,7 +610,13 @@ function StageContent({
       {mode !== "camera" && (
         <OrbitControls
           enabled={tool !== "wall"}
-          enableRotate={mode !== "plan"}
+          enableRotate={mode !== "plan" && !poseMode}
+          enablePan={!poseMode}
+          target={
+            poseTarget
+              ? [poseTarget.x, poseTarget.y + 0.9, poseTarget.z]
+              : [0, 0, 0]
+          }
           maxPolarAngle={Math.PI / 2.02}
           minDistance={2}
           maxDistance={60}
