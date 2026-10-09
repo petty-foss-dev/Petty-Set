@@ -74,6 +74,8 @@ See the [feature gap matrix](docs/FEATURE_GAP.md) for a detailed comparison and 
 
 The [parity plan](docs/PARITY_PLAN.md) defines the implementation phases and acceptance gates.
 
+The [production suite plan](docs/PRODUCTION_SUITE_PLAN.md) extends that target to script breakdown, scheduling, crew and resource planning, versioned handoff, collaboration, and high-quality rendering for major projects.
+
 This is an early editor, not yet a feature-complete Lensflare equivalent. The next work should add:
 
 1. Modeling tools: richer material controls, tracing over imported floor plans, rotation and grouping tools, and a larger original asset catalog.

@@ -2,6 +2,8 @@
 
 Target: the complete public [Lensflare](https://lensflare.io/) planning workflow, implemented independently with original code and assets. The [feature gap matrix](FEATURE_GAP.md) records the current baseline. This plan is an execution order, not a claim that advertised features have been audited inside Lensflare's signed-in editor.
 
+For the broader goal of planning a major production across departments, see the [production suite plan](PRODUCTION_SUITE_PLAN.md).
+
 ## Product rules
 
 - Keep local projects usable without an account or server. Hosted review and crew editing are optional services.
