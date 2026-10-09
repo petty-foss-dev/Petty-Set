@@ -252,6 +252,10 @@ function App() {
   >([]);
   const [calibrationMeters, setCalibrationMeters] = useState(3);
   const [poseMode, setPoseMode] = useState(false);
+  const [newPoseName, setNewPoseName] = useState("");
+  const [editingPoseId, setEditingPoseId] = useState<string>();
+  const [editingPoseName, setEditingPoseName] = useState("");
+  const [poseNameError, setPoseNameError] = useState("");
   const [actionSearch, setActionSearch] = useState("");
   const [order, setOrder] = useState<"story" | "shoot">("story");
   const [shotView, setShotView] = useState<"boards" | "list">("boards");
@@ -1125,6 +1129,54 @@ function App() {
     } else {
       updateItem(actorId, { mannequinJoints: joints });
     }
+  }
+
+  function saveCurrentPose() {
+    if (!selectedJoints || selected?.kind !== "actor") return;
+    const name = newPoseName.trim();
+    if (
+      !name ||
+      name.length > 60 ||
+      project.savedPoses?.some(
+        (pose) => pose.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+      )
+    ) {
+      setPoseNameError("Enter a unique pose name (up to 60 characters).");
+      return;
+    }
+    setProject((current) => ({
+      ...current,
+      savedPoses: [
+        ...(current.savedPoses ?? []),
+        { id: id(), name, joints: { ...selectedJoints } },
+      ],
+    }));
+    setNewPoseName("");
+    setPoseNameError("");
+  }
+
+  function renameSavedPose(poseId: string) {
+    const name = editingPoseName.trim();
+    if (
+      !name ||
+      name.length > 60 ||
+      project.savedPoses?.some(
+        (pose) =>
+          pose.id !== poseId &&
+          pose.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+      )
+    ) {
+      setPoseNameError("Enter a unique pose name (up to 60 characters).");
+      return;
+    }
+    setProject((current) => ({
+      ...current,
+      savedPoses: current.savedPoses?.map((pose) =>
+        pose.id === poseId ? { ...pose, name } : pose,
+      ),
+    }));
+    setEditingPoseId(undefined);
+    setPoseNameError("");
   }
 
   function updateActorAction(actorId: string, action?: ActorAction) {
@@ -3092,6 +3144,107 @@ function App() {
                         </option>
                       </select>
                     </label>
+                    <div className="pose-library">
+                      <h4>Saved poses</h4>
+                      {(project.savedPoses ?? []).length === 0 && (
+                        <p>
+                          Save this actor’s pose to reuse it on other shots and
+                          actors.
+                        </p>
+                      )}
+                      {(project.savedPoses ?? []).map((pose) => (
+                        <div className="pose-library-row" key={pose.id}>
+                          {editingPoseId === pose.id ? (
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                renameSavedPose(pose.id);
+                              }}
+                            >
+                              <input
+                                aria-label="Rename saved pose"
+                                autoFocus
+                                maxLength={60}
+                                value={editingPoseName}
+                                onChange={(event) =>
+                                  setEditingPoseName(event.target.value)
+                                }
+                              />
+                              <button type="submit">Save</button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingPoseId(undefined);
+                                  setPoseNameError("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </form>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="pose-library-apply"
+                                title={`Apply ${pose.name} to this actor${shot ? " in this shot" : ""}`}
+                                onClick={() =>
+                                  updateActorJoints(selected.id, {
+                                    ...pose.joints,
+                                  })
+                                }
+                              >
+                                {pose.name}
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Rename ${pose.name}`}
+                                onClick={() => {
+                                  setEditingPoseId(pose.id);
+                                  setEditingPoseName(pose.name);
+                                  setPoseNameError("");
+                                }}
+                              >
+                                Rename
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Delete ${pose.name}`}
+                                onClick={() =>
+                                  setProject((current) => ({
+                                    ...current,
+                                    savedPoses: current.savedPoses?.filter(
+                                      (entry) => entry.id !== pose.id,
+                                    ),
+                                  }))
+                                }
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                      <form
+                        className="pose-library-save"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          saveCurrentPose();
+                        }}
+                      >
+                        <input
+                          aria-label="New pose name"
+                          placeholder="New pose name"
+                          maxLength={60}
+                          value={newPoseName}
+                          onChange={(event) => {
+                            setNewPoseName(event.target.value);
+                            setPoseNameError("");
+                          }}
+                        />
+                        <button type="submit">Save current</button>
+                      </form>
+                      {poseNameError && <p role="alert">{poseNameError}</p>}
+                    </div>
                     <details className="pose-editor">
                       <summary>Fine tune joints</summary>
                       {(["Head", "Arms", "Legs"] as const).map((group) => (

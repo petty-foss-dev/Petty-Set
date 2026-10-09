@@ -62,6 +62,12 @@ export interface MannequinJoints {
   rightKneeBend: number;
 }
 
+export interface SavedPose {
+  id: string;
+  name: string;
+  joints: MannequinJoints;
+}
+
 export const mannequinJointControls: {
   key: keyof MannequinJoints;
   label: string;
@@ -402,6 +408,7 @@ export interface Project {
   version: 1;
   name: string;
   scenes: SetScene[];
+  savedPoses?: SavedPose[];
 }
 
 export const id = () => crypto.randomUUID();
@@ -461,6 +468,28 @@ export function isProject(value: unknown): value is Project {
     value.scenes.length === 0
   )
     return false;
+  if (value.savedPoses !== undefined) {
+    if (!Array.isArray(value.savedPoses)) return false;
+    const poseIds = new Set<string>();
+    const poseNames = new Set<string>();
+    for (const pose of value.savedPoses) {
+      if (
+        !isRecord(pose) ||
+        !isString(pose.id) ||
+        !pose.id ||
+        poseIds.has(pose.id) ||
+        !isString(pose.name) ||
+        pose.name.trim() !== pose.name ||
+        !pose.name ||
+        pose.name.length > 60 ||
+        poseNames.has(pose.name.toLocaleLowerCase()) ||
+        !isMannequinJoints(pose.joints)
+      )
+        return false;
+      poseIds.add(pose.id);
+      poseNames.add(pose.name.toLocaleLowerCase());
+    }
+  }
   const sceneIds = new Set<string>();
   for (const scene of value.scenes) {
     if (

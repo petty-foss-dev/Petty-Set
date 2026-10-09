@@ -532,6 +532,40 @@ test("mannequin joints are saved per shot and validated", () => {
   assert.equal(isProject(orphan), false);
 });
 
+test("saved poses survive project JSON and undo, with joint limits enforced", () => {
+  const original = sampleProject();
+  assert.equal(isProject(original), true);
+  const joints = { ...mannequinJointsForPose("pointing"), headTilt: 17 };
+  const saved = historyReducer(projectHistory(original), {
+    type: "edit",
+    update: (project) => ({
+      ...project,
+      savedPoses: [{ id: "pose-1", name: "Look up", joints }],
+    }),
+  });
+  const imported = JSON.parse(JSON.stringify(saved.present));
+  assert.equal(isProject(imported), true);
+  assert.deepEqual(imported.savedPoses[0].joints, joints);
+  assert.equal(
+    historyReducer(saved, { type: "undo" }).present.savedPoses,
+    undefined,
+  );
+  assert.equal(
+    historyReducer(historyReducer(saved, { type: "undo" }), { type: "redo" })
+      .present.savedPoses[0].name,
+    "Look up",
+  );
+  imported.savedPoses[0].joints.headTilt = 90;
+  assert.equal(isProject(imported), false);
+  imported.savedPoses[0].joints.headTilt = 17;
+  imported.savedPoses.push({
+    ...imported.savedPoses[0],
+    id: "pose-2",
+    name: "look up",
+  });
+  assert.equal(isProject(imported), false);
+});
+
 test("shot references survive project import validation", () => {
   const project = sampleProject();
   project.scenes[0].shots[0].reference = {

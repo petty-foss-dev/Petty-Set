@@ -1697,6 +1697,57 @@ button:focus-visible {
   background: #fffaf1;
   padding: 10px 12px;
 }
+.pose-library {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #d9cbb7;
+  border-radius: 7px;
+  background: #fffaf1;
+}
+.pose-library h4 {
+  margin: 0 0 8px;
+  color: #704e36;
+  font-size: 11px;
+}
+.pose-library p {
+  margin: 5px 0;
+  color: #806d59;
+  font-size: 11px;
+}
+.pose-library p[role="alert"] {
+  color: #a13624;
+}
+.pose-library-row,
+.pose-library-save,
+.pose-library-row form {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+.pose-library-row input,
+.pose-library-save input {
+  min-width: 0;
+  flex: 1;
+}
+.pose-library-row button,
+.pose-library-save button {
+  flex: none;
+  color: #9e6038;
+  font-size: 11px;
+}
+.pose-library-row form {
+  width: 100%;
+}
+.pose-library-apply {
+  flex: 1 !important;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
 .pose-editor summary {
   cursor: pointer;
   color: #704e36;
