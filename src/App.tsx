@@ -916,6 +916,24 @@ function Editor({
     });
   }
 
+  function distributeSelection(axis: "x" | "z") {
+    const items = selectedItems
+      .filter((item) => !item.locked && !item.hidden)
+      .sort((a, b) => a[axis] - b[axis]);
+    if (items.length < 3) return;
+    const start = items[0][axis];
+    const range = items.at(-1)![axis] - start;
+    if (range < 0.01) return;
+    const spacing = range / (items.length - 1);
+    const positions = new Map(
+      items.map((item, index) => [item.id, start + index * spacing]),
+    );
+    positionSelection((item) => ({
+      x: axis === "x" ? positions.get(item.id)! : item.x,
+      z: axis === "z" ? positions.get(item.id)! : item.z,
+    }));
+  }
+
   function duplicateSelection() {
     const sources = selectedItems.filter(
       (item) => !item.locked && !item.hidden,
@@ -3334,6 +3352,26 @@ function Editor({
                   }
                 >
                   Align Z
+                </button>
+              </div>
+              <div className="batch-actions">
+                <button
+                  disabled={
+                    selectedItems.filter((item) => !item.locked && !item.hidden)
+                      .length < 3
+                  }
+                  onClick={() => distributeSelection("x")}
+                >
+                  Distribute X
+                </button>
+                <button
+                  disabled={
+                    selectedItems.filter((item) => !item.locked && !item.hidden)
+                      .length < 3
+                  }
+                  onClick={() => distributeSelection("z")}
+                >
+                  Distribute Z
                 </button>
               </div>
               <div className="batch-position">
