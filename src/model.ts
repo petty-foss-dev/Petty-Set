@@ -369,6 +369,7 @@ export interface Shot {
   id: string;
   title: string;
   cameraId: string;
+  scriptSceneId?: string;
   notes: string;
   setup?: string;
   status?: "planned" | "ready" | "shot";
@@ -427,6 +428,31 @@ export interface SetScene {
   };
 }
 
+export interface ScriptScene {
+  id: string;
+  sceneNumber: string;
+  title: string;
+  intExt: "INT" | "EXT" | "INT/EXT";
+  timeOfDay: "DAY" | "NIGHT" | "DAWN" | "DUSK" | "OTHER";
+  setSceneId?: string;
+  synopsis?: string;
+  pageEighths: number;
+  cast: string[];
+  props: string[];
+  wardrobe: string[];
+  effects: string[];
+  notes?: string;
+}
+
+export interface ShootDay {
+  id: string;
+  date: string;
+  unit: string;
+  scriptSceneIds: string[];
+  notes?: string;
+  callTime?: string;
+}
+
 export type FloorFinish = "timber" | "tile" | "concrete" | "stone";
 
 export interface RoomFinish {
@@ -438,6 +464,8 @@ export interface Project {
   version: 1;
   name: string;
   scenes: SetScene[];
+  scriptScenes?: ScriptScene[];
+  shootDays?: ShootDay[];
   savedPoses?: SavedPose[];
 }
 
@@ -448,6 +476,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const isString = (value: unknown): value is string => typeof value === "string";
+const isCalendarDate = (value: unknown): value is string => {
+  if (!isString(value) || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
+};
+const isCallTime = (value: unknown): value is string =>
+  isString(value) && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 const isWallOpening = (value: unknown): value is WallOpening =>
   isRecord(value) &&
   ["door", "window"].includes(value.type as string) &&
@@ -502,6 +539,65 @@ export function isProject(value: unknown): value is Project {
     value.scenes.length === 0
   )
     return false;
+  const scriptSceneIds = new Set<string>();
+  if (value.scriptScenes !== undefined) {
+    if (!Array.isArray(value.scriptScenes)) return false;
+    for (const scriptScene of value.scriptScenes) {
+      if (
+        !isRecord(scriptScene) ||
+        !isString(scriptScene.id) ||
+        !scriptScene.id ||
+        scriptSceneIds.has(scriptScene.id) ||
+        !isString(scriptScene.sceneNumber) ||
+        !isString(scriptScene.title) ||
+        !["INT", "EXT", "INT/EXT"].includes(scriptScene.intExt as string) ||
+        !["DAY", "NIGHT", "DAWN", "DUSK", "OTHER"].includes(
+          scriptScene.timeOfDay as string,
+        ) ||
+        (scriptScene.setSceneId !== undefined &&
+          !isString(scriptScene.setSceneId)) ||
+        (scriptScene.synopsis !== undefined &&
+          !isString(scriptScene.synopsis)) ||
+        !isFiniteNumber(scriptScene.pageEighths) ||
+        !Number.isSafeInteger(scriptScene.pageEighths) ||
+        (scriptScene.pageEighths as number) < 0 ||
+        ["cast", "props", "wardrobe", "effects"].some(
+          (key) =>
+            !Array.isArray(scriptScene[key]) ||
+            !(scriptScene[key] as unknown[]).every(isString),
+        ) ||
+        (scriptScene.notes !== undefined && !isString(scriptScene.notes))
+      )
+        return false;
+      scriptSceneIds.add(scriptScene.id);
+    }
+  }
+  if (value.shootDays !== undefined) {
+    if (!Array.isArray(value.shootDays)) return false;
+    const shootDayIds = new Set<string>();
+    for (const shootDay of value.shootDays) {
+      if (
+        !isRecord(shootDay) ||
+        !isString(shootDay.id) ||
+        !shootDay.id.trim() ||
+        shootDayIds.has(shootDay.id) ||
+        !isCalendarDate(shootDay.date) ||
+        !isString(shootDay.unit) ||
+        !shootDay.unit.trim() ||
+        !Array.isArray(shootDay.scriptSceneIds) ||
+        !shootDay.scriptSceneIds.every(
+          (sceneId: unknown) =>
+            isString(sceneId) && scriptSceneIds.has(sceneId),
+        ) ||
+        new Set(shootDay.scriptSceneIds).size !==
+          shootDay.scriptSceneIds.length ||
+        (shootDay.notes !== undefined && !isString(shootDay.notes)) ||
+        (shootDay.callTime !== undefined && !isCallTime(shootDay.callTime))
+      )
+        return false;
+      shootDayIds.add(shootDay.id);
+    }
+  }
   if (value.savedPoses !== undefined) {
     if (!Array.isArray(value.savedPoses)) return false;
     const poseIds = new Set<string>();
@@ -792,6 +888,9 @@ export function isProject(value: unknown): value is Project {
         shotIds.has(shot.id) ||
         !isString(shot.title) ||
         !isString(shot.notes) ||
+        (shot.scriptSceneId !== undefined &&
+          (!isString(shot.scriptSceneId) ||
+            !scriptSceneIds.has(shot.scriptSceneId))) ||
         (shot.setup !== undefined && !isString(shot.setup)) ||
         (shot.status !== undefined &&
           !["planned", "ready", "shot"].includes(shot.status as string)) ||
@@ -1049,6 +1148,16 @@ export function isProject(value: unknown): value is Project {
     )
       return false;
   }
+  if (
+    Array.isArray(value.scriptScenes) &&
+    value.scriptScenes.some(
+      (scriptScene: unknown) =>
+        isRecord(scriptScene) &&
+        scriptScene.setSceneId !== undefined &&
+        !sceneIds.has(scriptScene.setSceneId as string),
+    )
+  )
+    return false;
   return true;
 }
 

@@ -92,6 +92,8 @@ import type {
   Project,
   SceneEnvironment,
   SceneItem,
+  ScriptScene,
+  ShootDay,
   WallOpening,
   SetScene,
   Shot,
@@ -128,6 +130,9 @@ import type {
   SensorId,
 } from "./cinematography";
 import { shotListCSV } from "./shotList";
+import { scriptBreakdownCSV } from "./breakdown";
+import { castScheduleConflicts, shootScheduleCSV } from "./schedule";
+import { parseFountainScenes } from "./fountain";
 import { actorRouteCollisions, cameraRouteCollisions } from "./cameraRoute";
 import {
   fixtureLumens,
@@ -257,6 +262,34 @@ interface EditorProps {
   onOpen: (session: FilmSession) => void;
 }
 
+function BreakdownListField({
+  label,
+  values,
+  onSave,
+}: {
+  label: string;
+  values: string[];
+  onSave: (values: string[]) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        key={JSON.stringify(values)}
+        defaultValue={values.join(", ")}
+        placeholder="Comma separated"
+        onBlur={(event) => {
+          const next = event.currentTarget.value
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean);
+          if (JSON.stringify(next) !== JSON.stringify(values)) onSave(next);
+        }}
+      />
+    </label>
+  );
+}
+
 function Editor({
   session,
   initialHistory,
@@ -273,6 +306,11 @@ function Editor({
   const [shotId, setShotId] = useState<string | undefined>(
     project.scenes[0].shots[0]?.id,
   );
+  const [scriptSceneId, setScriptSceneId] = useState<string>();
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [shootDayId, setShootDayId] = useState<string>();
+  const [breakdownNotice, setBreakdownNotice] = useState("");
   const [selectedId, setPrimaryId] = useState<string>();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [groupDelta, setGroupDelta] = useState({ x: 0, z: 0 });
@@ -340,6 +378,7 @@ function Editor({
     null,
   );
   const importRef = useRef<HTMLInputElement>(null);
+  const fountainRef = useRef<HTMLInputElement>(null);
   const floorplanRef = useRef<HTMLInputElement>(null);
   const assetRef = useRef<HTMLInputElement>(null);
   const batchReferenceRef = useRef<HTMLInputElement>(null);
@@ -352,6 +391,34 @@ function Editor({
     lightSample?.sceneId === scene.id ? lightSample : null;
   const shot =
     scene.shots.find((value) => value.id === shotId) ?? scene.shots[0];
+  const scriptScenes = project.scriptScenes ?? [];
+  const shootDays = project.shootDays ?? [];
+  const selectedShootDay =
+    shootDays.find((value) => value.id === shootDayId) ?? shootDays[0];
+  const scheduledSceneIds = new Set(
+    shootDays.flatMap((day) => day.scriptSceneIds),
+  );
+  const unscheduledScenes = scriptScenes.filter(
+    (entry) => !scheduledSceneIds.has(entry.id),
+  );
+  const selectedDayCastConflicts = selectedShootDay
+    ? castScheduleConflicts(project).filter(
+        (conflict) =>
+          conflict.date === selectedShootDay.date &&
+          conflict.units.includes(selectedShootDay.unit) &&
+          selectedShootDay.scriptSceneIds.some((sceneId) =>
+            scriptScenes
+              .find((entry) => entry.id === sceneId)
+              ?.cast.some(
+                (name) =>
+                  name.trim().toLocaleLowerCase() ===
+                  conflict.castMember.toLocaleLowerCase(),
+              ),
+          ),
+      )
+    : [];
+  const selectedScriptScene =
+    scriptScenes.find((value) => value.id === scriptSceneId) ?? scriptScenes[0];
   const environment: SceneEnvironment = scene.environment ?? {
     ground: "studio",
     skyColor: "#dce0de",
@@ -562,6 +629,126 @@ function Editor({
       scenes[index] = updated;
       return { ...current, scenes };
     });
+  }
+
+  function addScriptScene() {
+    const next: ScriptScene = {
+      id: id(),
+      sceneNumber: String(scriptScenes.length + 1),
+      title: "Untitled scene",
+      intExt: "INT",
+      timeOfDay: "DAY",
+      setSceneId: scene.id,
+      pageEighths: 8,
+      cast: [],
+      props: [],
+      wardrobe: [],
+      effects: [],
+    };
+    setProject((current) => ({
+      ...current,
+      scriptScenes: [...(current.scriptScenes ?? []), next],
+    }));
+    setScriptSceneId(next.id);
+    setShowBreakdown(true);
+  }
+
+  function updateScriptScene(patch: Partial<ScriptScene>) {
+    if (!selectedScriptScene) return;
+    setProject((current) => ({
+      ...current,
+      scriptScenes: (current.scriptScenes ?? []).map((entry) =>
+        entry.id === selectedScriptScene.id ? { ...entry, ...patch } : entry,
+      ),
+    }));
+  }
+
+  function addShootDay() {
+    const next: ShootDay = {
+      id: id(),
+      date: new Date().toLocaleDateString("sv-SE"),
+      unit: "Main unit",
+      scriptSceneIds: [],
+    };
+    setProject((current) => ({
+      ...current,
+      shootDays: [...(current.shootDays ?? []), next],
+    }));
+    setShootDayId(next.id);
+    setShowSchedule(true);
+  }
+
+  function updateShootDay(patch: Partial<ShootDay>) {
+    if (!selectedShootDay) return;
+    setProject((current) => ({
+      ...current,
+      shootDays: (current.shootDays ?? []).map((day) =>
+        day.id === selectedShootDay.id ? { ...day, ...patch } : day,
+      ),
+    }));
+  }
+
+  function toggleShootDayScene(scriptSceneId: string) {
+    if (!selectedShootDay) return;
+    const assigned = selectedShootDay.scriptSceneIds.includes(scriptSceneId);
+    updateShootDay({
+      scriptSceneIds: assigned
+        ? selectedShootDay.scriptSceneIds.filter(
+            (value) => value !== scriptSceneId,
+          )
+        : [...selectedShootDay.scriptSceneIds, scriptSceneId],
+    });
+  }
+
+  function deleteShootDay() {
+    if (!selectedShootDay) return;
+    setProject((current) => ({
+      ...current,
+      shootDays: (current.shootDays ?? []).filter(
+        (day) => day.id !== selectedShootDay.id,
+      ),
+    }));
+    setShootDayId(undefined);
+  }
+
+  function deleteScriptScene() {
+    if (!selectedScriptScene) return;
+    const linkedShots = project.scenes.reduce(
+      (count, set) =>
+        count +
+        set.shots.filter(
+          (entry) => entry.scriptSceneId === selectedScriptScene.id,
+        ).length,
+      0,
+    );
+    if (
+      linkedShots > 0 &&
+      !window.confirm(
+        `Delete script scene ${selectedScriptScene.sceneNumber}? ${linkedShots} linked shot${linkedShots === 1 ? "" : "s"} will be unlinked.`,
+      )
+    )
+      return;
+    setProject((current) => ({
+      ...current,
+      scriptScenes: (current.scriptScenes ?? []).filter(
+        (entry) => entry.id !== selectedScriptScene.id,
+      ),
+      shootDays: (current.shootDays ?? []).map((day) => ({
+        ...day,
+        scriptSceneIds: day.scriptSceneIds.filter(
+          (value) => value !== selectedScriptScene.id,
+        ),
+      })),
+      scenes: current.scenes.map((set) => ({
+        ...set,
+        shots: set.shots.map((entry) =>
+          entry.scriptSceneId === selectedScriptScene.id
+            ? { ...entry, scriptSceneId: undefined }
+            : entry,
+        ),
+      })),
+    }));
+    setScriptSceneId(undefined);
   }
 
   function updateEnvironment(patch: Partial<SceneEnvironment>) {
@@ -1273,6 +1460,7 @@ function Editor({
       cameraId: camera.id,
       notes: "",
       setup: shot?.setup,
+      scriptSceneId: shot?.scriptSceneId,
       status: "planned",
       duration: 5,
       aspectRatio: shot?.aspectRatio ?? "16:9",
@@ -1940,6 +2128,55 @@ function Editor({
     event.target.value = "";
   }
 
+  async function importFountain(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 2_000_000) {
+      setBreakdownNotice("Import a Fountain file smaller than 2 MB.");
+      return;
+    }
+    const parsed = parseFountainScenes(await file.text());
+    if (!parsed.length) {
+      setBreakdownNotice("No Fountain scene headings were found in this file.");
+      return;
+    }
+    const existingNumbers = new Set(
+      scriptScenes.map((entry) => entry.sceneNumber.trim().toLowerCase()),
+    );
+    const additions: ScriptScene[] = parsed
+      .filter((entry) => {
+        const number = entry.sceneNumber.trim().toLowerCase();
+        if (existingNumbers.has(number)) return false;
+        existingNumbers.add(number);
+        return true;
+      })
+      .map((entry) => ({
+        ...entry,
+        id: id(),
+        pageEighths: 0,
+        cast: [],
+        props: [],
+        wardrobe: [],
+        effects: [],
+      }));
+    if (!additions.length) {
+      setBreakdownNotice(
+        "All numbered scenes already exist. No breakdown data changed.",
+      );
+      return;
+    }
+    setProject((current) => ({
+      ...current,
+      scriptScenes: [...(current.scriptScenes ?? []), ...additions],
+    }));
+    setScriptSceneId(additions[0].id);
+    setShowBreakdown(true);
+    setBreakdownNotice(
+      `Added ${additions.length} script ${additions.length === 1 ? "scene" : "scenes"}. Existing scene numbers were kept unchanged.`,
+    );
+  }
+
   async function openFilm(id: string) {
     if (id === session.id) {
       setShowFilms(false);
@@ -2298,6 +2535,34 @@ function Editor({
               <FileText size={16} /> Shot list CSV{" "}
               <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
             </button>
+            <button
+              disabled={!scriptScenes.length}
+              onClick={() => {
+                download(
+                  `${project.name || "project"}-script-breakdown.csv`,
+                  scriptBreakdownCSV(project),
+                  "text/csv;charset=utf-8",
+                );
+                setShowExport(false);
+              }}
+            >
+              <FileText size={16} /> Script breakdown CSV
+              <small>Scenes, sets, cast and departments</small>
+            </button>
+            <button
+              disabled={!scriptScenes.length}
+              onClick={() => {
+                download(
+                  `${project.name || "project"}-shoot-schedule.csv`,
+                  shootScheduleCSV(project),
+                  "text/csv;charset=utf-8",
+                );
+                setShowExport(false);
+              }}
+            >
+              <FileText size={16} /> Shoot schedule CSV
+              <small>Shoot days and unscheduled scenes</small>
+            </button>
             <button onClick={exportShotListPDF}>
               <FileText size={16} /> Shot list PDF{" "}
               <small>{order === "shoot" ? "Shoot" : "Story"} order</small>
@@ -2349,6 +2614,13 @@ function Editor({
           onChange={importProject}
         />
         <input
+          ref={fountainRef}
+          hidden
+          type="file"
+          accept=".fountain,.txt,text/plain"
+          onChange={(event) => void importFountain(event)}
+        />
+        <input
           ref={floorplanRef}
           hidden
           type="file"
@@ -2391,8 +2663,360 @@ function Editor({
               <X size={18} />
             </button>
           </div>
+          <section className="breakdown-panel" aria-label="Script breakdown">
+            <button
+              className="breakdown-toggle"
+              aria-expanded={showBreakdown}
+              aria-controls="script-breakdown-content"
+              onClick={() => setShowBreakdown((visible) => !visible)}
+            >
+              <span>
+                <BookOpen size={15} /> Script breakdown
+                <small>{scriptScenes.length}</small>
+              </span>
+              <ChevronDown size={15} className={showBreakdown ? "open" : ""} />
+            </button>
+            {showBreakdown && (
+              <div id="script-breakdown-content" className="breakdown-content">
+                <div className="breakdown-list" aria-label="Script scenes">
+                  {scriptScenes.map((entry) => (
+                    <button
+                      key={entry.id}
+                      className={
+                        entry.id === selectedScriptScene?.id ? "selected" : ""
+                      }
+                      aria-current={
+                        entry.id === selectedScriptScene?.id
+                          ? "true"
+                          : undefined
+                      }
+                      onClick={() => setScriptSceneId(entry.id)}
+                    >
+                      <strong>{entry.sceneNumber || "—"}</strong>
+                      <span>{entry.title || "Untitled scene"}</span>
+                      <small>
+                        {entry.intExt} · {entry.timeOfDay}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+                <button className="text-button" onClick={addScriptScene}>
+                  <Plus size={15} /> Add script scene
+                </button>
+                <button
+                  className="text-button"
+                  onClick={() => fountainRef.current?.click()}
+                >
+                  <Upload size={15} /> Import Fountain scenes
+                </button>
+                {breakdownNotice && (
+                  <p className="breakdown-notice" role="status">
+                    {breakdownNotice}
+                  </p>
+                )}
+                {selectedScriptScene && (
+                  <div
+                    className="breakdown-editor"
+                    key={selectedScriptScene.id}
+                  >
+                    <div className="breakdown-editor-heading">
+                      <strong>
+                        Scene {selectedScriptScene.sceneNumber || "—"}
+                      </strong>
+                      <button
+                        className="icon-button"
+                        aria-label={`Delete script scene ${selectedScriptScene.sceneNumber}`}
+                        title="Delete script scene"
+                        onClick={deleteScriptScene}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    <div className="breakdown-pair">
+                      <label>
+                        Number
+                        <input
+                          aria-label="Script scene number"
+                          value={selectedScriptScene.sceneNumber}
+                          onChange={(event) =>
+                            updateScriptScene({
+                              sceneNumber: event.target.value,
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Pages (eighths)
+                        <input
+                          aria-label="Script scene page eighths"
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={selectedScriptScene.pageEighths}
+                          onChange={(event) =>
+                            updateScriptScene({
+                              pageEighths: Math.max(
+                                0,
+                                Math.floor(Number(event.target.value) || 0),
+                              ),
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      Scene title
+                      <input
+                        value={selectedScriptScene.title}
+                        onChange={(event) =>
+                          updateScriptScene({ title: event.target.value })
+                        }
+                      />
+                    </label>
+                    <div className="breakdown-pair">
+                      <label>
+                        Location
+                        <select
+                          value={selectedScriptScene.intExt}
+                          onChange={(event) =>
+                            updateScriptScene({
+                              intExt: event.target
+                                .value as ScriptScene["intExt"],
+                            })
+                          }
+                        >
+                          <option value="INT">INT</option>
+                          <option value="EXT">EXT</option>
+                          <option value="INT/EXT">INT/EXT</option>
+                        </select>
+                      </label>
+                      <label>
+                        Time of day
+                        <select
+                          value={selectedScriptScene.timeOfDay}
+                          onChange={(event) =>
+                            updateScriptScene({
+                              timeOfDay: event.target
+                                .value as ScriptScene["timeOfDay"],
+                            })
+                          }
+                        >
+                          <option value="DAY">DAY</option>
+                          <option value="NIGHT">NIGHT</option>
+                          <option value="DAWN">DAWN</option>
+                          <option value="DUSK">DUSK</option>
+                          <option value="OTHER">OTHER</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      Set
+                      <select
+                        aria-label="Script scene set"
+                        value={selectedScriptScene.setSceneId ?? ""}
+                        onChange={(event) =>
+                          updateScriptScene({
+                            setSceneId: event.target.value || undefined,
+                          })
+                        }
+                      >
+                        <option value="">No set assigned</option>
+                        {project.scenes.map((set) => (
+                          <option key={set.id} value={set.id}>
+                            {set.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Synopsis
+                      <textarea
+                        rows={2}
+                        value={selectedScriptScene.synopsis ?? ""}
+                        onChange={(event) =>
+                          updateScriptScene({ synopsis: event.target.value })
+                        }
+                      />
+                    </label>
+                    <BreakdownListField
+                      label="Cast"
+                      values={selectedScriptScene.cast}
+                      onSave={(cast) => updateScriptScene({ cast })}
+                    />
+                    <BreakdownListField
+                      label="Props"
+                      values={selectedScriptScene.props}
+                      onSave={(props) => updateScriptScene({ props })}
+                    />
+                    <BreakdownListField
+                      label="Wardrobe"
+                      values={selectedScriptScene.wardrobe}
+                      onSave={(wardrobe) => updateScriptScene({ wardrobe })}
+                    />
+                    <BreakdownListField
+                      label="Effects"
+                      values={selectedScriptScene.effects}
+                      onSave={(effects) => updateScriptScene({ effects })}
+                    />
+                    <label>
+                      Breakdown notes
+                      <textarea
+                        rows={2}
+                        value={selectedScriptScene.notes ?? ""}
+                        onChange={(event) =>
+                          updateScriptScene({ notes: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+          <section className="shoot-schedule-panel" aria-label="Shoot schedule">
+            <button
+              className="breakdown-toggle"
+              aria-expanded={showSchedule}
+              aria-controls="shoot-schedule-content"
+              onClick={() => setShowSchedule((visible) => !visible)}
+            >
+              <span>
+                <Clapperboard size={15} /> Shoot schedule
+                <small>
+                  {shootDays.length} {shootDays.length === 1 ? "day" : "days"}
+                </small>
+              </span>
+              <ChevronDown size={15} className={showSchedule ? "open" : ""} />
+            </button>
+            {showSchedule && (
+              <div id="shoot-schedule-content" className="breakdown-content">
+                <p className="shoot-schedule-summary">
+                  {`${unscheduledScenes.length} unscheduled script ${unscheduledScenes.length === 1 ? "scene" : "scenes"}`}
+                </p>
+                <div className="shoot-day-list" aria-label="Shoot days">
+                  {shootDays.map((day) => (
+                    <button
+                      key={day.id}
+                      className={
+                        day.id === selectedShootDay?.id ? "selected" : ""
+                      }
+                      aria-current={
+                        day.id === selectedShootDay?.id ? "true" : undefined
+                      }
+                      onClick={() => setShootDayId(day.id)}
+                    >
+                      <strong>{day.date || "Set date"}</strong>
+                      <span>{day.unit || "Unnamed unit"}</span>
+                      <small>
+                        {`${day.scriptSceneIds.length} ${day.scriptSceneIds.length === 1 ? "scene" : "scenes"}`}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+                <button className="text-button" onClick={addShootDay}>
+                  <Plus size={15} /> Add shoot day
+                </button>
+                {selectedShootDay && (
+                  <div className="shoot-day-editor" key={selectedShootDay.id}>
+                    <div className="breakdown-editor-heading">
+                      <strong>Shoot day</strong>
+                      <button
+                        className="icon-button"
+                        aria-label={`Delete shoot day ${selectedShootDay.date}`}
+                        title="Delete shoot day"
+                        onClick={deleteShootDay}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                    <div className="breakdown-pair">
+                      <label>
+                        Date
+                        <input
+                          aria-label="Shoot day date"
+                          type="date"
+                          value={selectedShootDay.date}
+                          onChange={(event) => {
+                            if (event.target.value)
+                              updateShootDay({ date: event.target.value });
+                          }}
+                        />
+                      </label>
+                      <label>
+                        Call time
+                        <input
+                          aria-label="Shoot day call time"
+                          type="time"
+                          value={selectedShootDay.callTime ?? ""}
+                          onChange={(event) =>
+                            updateShootDay({
+                              callTime: event.target.value || undefined,
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      Unit
+                      <input
+                        aria-label="Shoot day unit"
+                        value={selectedShootDay.unit}
+                        onChange={(event) => {
+                          if (event.target.value.trim())
+                            updateShootDay({ unit: event.target.value });
+                        }}
+                      />
+                    </label>
+                    <fieldset className="shoot-day-scenes">
+                      <legend>Script scenes on this day</legend>
+                      {scriptScenes.length === 0 ? (
+                        <p>Add script scenes in the breakdown first.</p>
+                      ) : (
+                        scriptScenes.map((entry) => (
+                          <label key={entry.id}>
+                            <input
+                              type="checkbox"
+                              checked={selectedShootDay.scriptSceneIds.includes(
+                                entry.id,
+                              )}
+                              onChange={() => toggleShootDayScene(entry.id)}
+                            />
+                            <span>
+                              <strong>{entry.sceneNumber || "—"}</strong>{" "}
+                              {entry.title || "Untitled scene"}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </fieldset>
+                    {selectedDayCastConflicts.length > 0 && (
+                      <div className="shoot-day-conflicts" role="status">
+                        <strong>Cast booked across units</strong>
+                        {selectedDayCastConflicts.map((conflict) => (
+                          <p key={conflict.castMember}>
+                            {conflict.castMember}: {conflict.units.join(" / ")}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    <label>
+                      Day notes
+                      <textarea
+                        aria-label="Shoot day notes"
+                        rows={2}
+                        value={selectedShootDay.notes ?? ""}
+                        onChange={(event) =>
+                          updateShootDay({ notes: event.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
           <div className="scene-picker">
-            <label htmlFor="scene-select">SCENE</label>
+            <label htmlFor="scene-select">SET</label>
             <select
               id="scene-select"
               value={scene.id}
@@ -2415,7 +3039,7 @@ function Editor({
             </select>
             <input
               className="scene-name"
-              aria-label="Scene name"
+              aria-label="Set name"
               value={scene.name}
               onChange={(event) =>
                 updateScene((current) => ({
@@ -2429,7 +3053,7 @@ function Editor({
               onClick={() => {
                 const next: SetScene = {
                   id: id(),
-                  name: `Scene ${project.scenes.length + 1}`,
+                  name: `Set ${project.scenes.length + 1}`,
                   items: [],
                   shots: [],
                   shootOrder: [],
@@ -2445,7 +3069,7 @@ function Editor({
                 setSelectedId(undefined);
               }}
             >
-              <Plus size={15} /> New scene
+              <Plus size={15} /> New set
             </button>
             <button
               className="text-button"
@@ -2463,7 +3087,7 @@ function Editor({
                 setMode("stage");
               }}
             >
-              <Sofa size={15} /> Furnished scene
+              <Sofa size={15} /> Furnished set
             </button>
             <button
               className="text-button"
@@ -2481,7 +3105,7 @@ function Editor({
                 setMode("stage");
               }}
             >
-              <Flower2 size={15} /> Outdoor scene
+              <Flower2 size={15} /> Outdoor set
             </button>
             <button
               className="text-button"
@@ -2499,7 +3123,7 @@ function Editor({
                 setMode("stage");
               }}
             >
-              <Building2 size={15} /> Backlot scene
+              <Building2 size={15} /> Backlot set
             </button>
           </div>
           <div className="environment-fields">
@@ -5292,6 +5916,25 @@ function Editor({
                     updateShot({ title: event.target.value })
                   }
                 />
+              </label>
+              <label>
+                Script scene
+                <select
+                  aria-label="Current shot script scene"
+                  value={shot.scriptSceneId ?? ""}
+                  onChange={(event) =>
+                    updateShot({
+                      scriptSceneId: event.target.value || undefined,
+                    })
+                  }
+                >
+                  <option value="">Unassigned</option>
+                  {scriptScenes.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.sceneNumber} · {entry.title}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Setup

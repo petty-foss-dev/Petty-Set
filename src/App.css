@@ -311,6 +311,245 @@
   padding: 20px 16px 17px;
   border-bottom: 1px solid #eeede8;
 }
+.breakdown-panel {
+  border-bottom: 1px solid #ded2bf;
+}
+.breakdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 15px 16px;
+  color: #4b3929;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+}
+.breakdown-toggle span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.breakdown-toggle small {
+  color: #a16b43;
+}
+.breakdown-toggle > svg {
+  transition: transform 150ms ease;
+}
+.breakdown-toggle > svg.open {
+  transform: rotate(180deg);
+}
+.breakdown-content {
+  padding: 0 16px 16px;
+}
+.breakdown-list {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.breakdown-list button {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 2px 6px;
+  padding: 7px;
+  border-radius: 5px;
+  color: #514638;
+  text-align: left;
+}
+.breakdown-list button.selected {
+  background: #ead8bc;
+  box-shadow: inset 3px 0 #bd7644;
+}
+.breakdown-list strong {
+  grid-row: span 2;
+  align-self: center;
+  font-size: 12px;
+}
+.breakdown-list span {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breakdown-list small {
+  color: #8a7156;
+  font-size: 10px;
+}
+.breakdown-editor {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #ded2bf;
+}
+.breakdown-editor-heading,
+.breakdown-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.breakdown-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.breakdown-editor label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #8a7156;
+  font-size: 10px;
+  font-weight: 700;
+}
+.breakdown-editor input,
+.breakdown-editor select,
+.breakdown-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #d9cbb7;
+  border-radius: 5px;
+  background: #fffaf1;
+  color: #3b342d;
+  font:
+    11px "Space Grotesk",
+    sans-serif;
+}
+.breakdown-editor textarea {
+  resize: vertical;
+}
+.breakdown-notice {
+  margin: 8px 0 0;
+  color: #76533c;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.shoot-schedule-panel {
+  border-bottom: 1px solid #ded2bf;
+}
+.shoot-schedule-summary {
+  margin: 0 0 9px;
+  color: #76533c;
+  font-size: 10px;
+}
+.shoot-day-list {
+  display: grid;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.shoot-day-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 7px;
+  border-radius: 5px;
+  color: #514638;
+  text-align: left;
+}
+.shoot-day-list button.selected {
+  background: #ead8bc;
+  box-shadow: inset 3px 0 #bd7644;
+}
+.shoot-day-list strong,
+.shoot-day-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shoot-day-list strong {
+  font-size: 11px;
+}
+.shoot-day-list span {
+  grid-column: 1;
+  color: #8a7156;
+  font-size: 10px;
+}
+.shoot-day-list small {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  color: #8a7156;
+  font-size: 10px;
+}
+.shoot-day-editor {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #ded2bf;
+}
+.shoot-day-editor label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: #8a7156;
+  font-size: 10px;
+  font-weight: 700;
+}
+.shoot-day-editor input:not([type="checkbox"]),
+.shoot-day-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #d9cbb7;
+  border-radius: 5px;
+  background: #fffaf1;
+  color: #3b342d;
+  font:
+    11px "Space Grotesk",
+    sans-serif;
+}
+.shoot-day-editor textarea {
+  resize: vertical;
+}
+.shoot-day-scenes {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #d9cbb7;
+  border-radius: 5px;
+}
+.shoot-day-scenes legend {
+  color: #76533c;
+  font-size: 10px;
+  font-weight: 700;
+}
+.shoot-day-scenes label {
+  display: flex;
+  align-items: start;
+  gap: 7px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+.shoot-day-scenes input {
+  margin: 1px 0 0;
+  accent-color: #bd7644;
+}
+.shoot-day-scenes span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.shoot-day-scenes p {
+  margin: 0;
+  color: #8a7156;
+  font-size: 10px;
+}
+.shoot-day-conflicts {
+  padding: 8px;
+  border: 1px solid #c28154;
+  border-radius: 5px;
+  background: #fff1de;
+  color: #70442b;
+  font-size: 10px;
+}
+.shoot-day-conflicts p {
+  margin: 4px 0 0;
+}
 .scene-picker label,
 .eyebrow {
   display: block;

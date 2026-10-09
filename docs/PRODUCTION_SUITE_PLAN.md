@@ -49,6 +49,8 @@ Evaluate [OpenUSD](https://openusd.org/) for layered 3D scene interchange, [Open
 
 ## First implementation slice
 
-Start with production identity and a script-scene breakdown linked to the existing set scenes and shots. Add stable IDs, scene numbers, INT/EXT, day/night, cast and department tags, then generate a breakdown report from the same records. Preserve all existing local projects through migration. This makes scheduling and call sheets possible without creating a second, conflicting shot database.
+The first slice now adds script-scene IDs and metadata linked to existing sets and shots, manual breakdown editing, Fountain scene import, a breakdown CSV, and shoot-day assignments with a schedule CSV and same-date cross-unit cast conflict warning. Legacy projects remain readable without these optional records. This is an initial scheduling workflow, not the full Gate 2 or Gate 3: script revision reconciliation, resource availability, schedule dependencies, stripboard interaction and issued call sheets remain.
+
+Next, add production identity and revision metadata, then reconcile script revisions without losing shot links or department tags. Versioned snapshots and recovery must precede issued call sheets and hosted collaboration.
 
 Do not start hosted collaboration or a render farm until project migration, asset references, revision snapshots and recovery are reliable. Server capacity improves throughput; it does not make an inaccurate scene or fixture model physically accurate.

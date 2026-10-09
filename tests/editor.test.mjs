@@ -64,6 +64,171 @@ import {
   splitWall,
 } from "../src/floorplan.ts";
 
+test("script scenes roundtrip with stable shot and set links", () => {
+  const project = sampleProject();
+  assert.equal(isProject(project), true);
+  const scriptScene = {
+    id: "script-scene-1",
+    sceneNumber: "12A",
+    title: "The arrival",
+    intExt: "INT/EXT",
+    timeOfDay: "DUSK",
+    setSceneId: project.scenes[0].id,
+    synopsis: "The cast crosses the threshold.",
+    pageEighths: 11,
+    cast: ["Lead", "Driver"],
+    props: ["Suitcase"],
+    wardrobe: ["Travel coat"],
+    effects: ["Rain"],
+    notes: "Hold for the doorway reveal.",
+  };
+  project.scriptScenes = [scriptScene];
+  project.scenes[0].shots[0].scriptSceneId = scriptScene.id;
+  const restored = JSON.parse(JSON.stringify(project));
+  assert.equal(isProject(restored), true);
+  assert.deepEqual(restored.scriptScenes, [scriptScene]);
+  assert.equal(restored.scenes[0].shots[0].scriptSceneId, scriptScene.id);
+
+  const duplicate = structuredClone(project);
+  duplicate.scriptScenes.push({ ...scriptScene });
+  assert.equal(isProject(duplicate), false);
+
+  const missingSet = structuredClone(project);
+  missingSet.scriptScenes[0].setSceneId = "missing";
+  assert.equal(isProject(missingSet), false);
+
+  const missingScriptScene = structuredClone(project);
+  missingScriptScene.scenes[0].shots[0].scriptSceneId = "missing";
+  assert.equal(isProject(missingScriptScene), false);
+
+  const invalidDuration = structuredClone(project);
+  invalidDuration.scriptScenes[0].pageEighths = 1.5;
+  assert.equal(isProject(invalidDuration), false);
+  invalidDuration.scriptScenes[0].pageEighths = -1;
+  assert.equal(isProject(invalidDuration), false);
+
+  const invalidBreakdown = structuredClone(project);
+  invalidBreakdown.scriptScenes[0].cast = ["Lead", 42];
+  assert.equal(isProject(invalidBreakdown), false);
+
+  const invalidTime = structuredClone(project);
+  invalidTime.scriptScenes[0].timeOfDay = "LUNCH";
+  assert.equal(isProject(invalidTime), false);
+
+  const noScriptScenes = structuredClone(project);
+  delete noScriptScenes.scriptScenes;
+  delete noScriptScenes.scenes[0].shots[0].scriptSceneId;
+  assert.equal(isProject(noScriptScenes), true);
+  noScriptScenes.scenes[0].shots[0].scriptSceneId = scriptScene.id;
+  assert.equal(isProject(noScriptScenes), false);
+});
+
+test("shoot days roundtrip and validate calendar dates and script links", () => {
+  const project = sampleProject();
+  project.scriptScenes = [
+    {
+      id: "scene-a",
+      sceneNumber: "1",
+      title: "Arrival",
+      intExt: "EXT",
+      timeOfDay: "DAY",
+      pageEighths: 8,
+      cast: [],
+      props: [],
+      wardrobe: [],
+      effects: [],
+    },
+    {
+      id: "scene-b",
+      sceneNumber: "2",
+      title: "Conversation",
+      intExt: "INT",
+      timeOfDay: "NIGHT",
+      pageEighths: 12,
+      cast: [],
+      props: [],
+      wardrobe: [],
+      effects: [],
+    },
+  ];
+  project.shootDays = [
+    {
+      id: "day-1",
+      date: "2028-02-29",
+      unit: "Main unit",
+      scriptSceneIds: ["scene-a", "scene-b"],
+      notes: "Exterior first",
+      callTime: "06:30",
+    },
+    {
+      id: "day-2",
+      date: "2028-03-01",
+      unit: "Second unit",
+      scriptSceneIds: ["scene-a"],
+    },
+  ];
+  const restored = JSON.parse(JSON.stringify(project));
+  assert.equal(isProject(restored), true);
+  assert.deepEqual(restored.shootDays, project.shootDays);
+
+  const invalidCases = [
+    (day) => {
+      day.date = "2027-02-29";
+    },
+    (day) => {
+      day.date = "2028-13-01";
+    },
+    (day) => {
+      day.date = "2028-2-29";
+    },
+    (day) => {
+      day.unit = "  ";
+    },
+    (day) => {
+      day.scriptSceneIds.push("scene-a");
+    },
+    (day) => {
+      day.scriptSceneIds.push("missing");
+    },
+    (day) => {
+      day.notes = 12;
+    },
+    (day) => {
+      day.callTime = "24:00";
+    },
+    (day) => {
+      day.callTime = "6:30";
+    },
+    (day) => {
+      day.id = "";
+    },
+  ];
+  for (const makeInvalid of invalidCases) {
+    const invalid = structuredClone(project);
+    makeInvalid(invalid.shootDays[0]);
+    assert.equal(isProject(invalid), false);
+  }
+
+  const duplicate = structuredClone(project);
+  duplicate.shootDays[1].id = "day-1";
+  assert.equal(isProject(duplicate), false);
+
+  const legacy = structuredClone(project);
+  delete legacy.shootDays;
+  assert.equal(isProject(legacy), true);
+  delete legacy.scriptScenes;
+  assert.equal(isProject(legacy), true);
+  legacy.shootDays = [
+    {
+      id: "orphan",
+      date: "2028-03-02",
+      unit: "Main unit",
+      scriptSceneIds: ["scene-a"],
+    },
+  ];
+  assert.equal(isProject(legacy), false);
+});
+
 test("scene layers keep old projects valid and hide and lock assigned objects", () => {
   const project = sampleProject();
   const scene = project.scenes[0];
