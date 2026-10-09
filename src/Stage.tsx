@@ -9,7 +9,13 @@ import {
   TransformControls,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { actorPoseAt, snapWallPoint, wallEndpoints } from "./model";
+import {
+  actorPoseAt,
+  mannequinJointsForPose,
+  snapWallPoint,
+  wallEndpoints,
+} from "./model";
+import { actorActionPose } from "./actorActions";
 import SetPiece from "./SetPieces";
 import Mannequin from "./Mannequin";
 import type { MannequinJoints, SceneItem, SetScene, Shot } from "./model";
@@ -252,6 +258,17 @@ function StageContent({
   const poseTarget = poseMode
     ? visualItems.find((item) => item.id === selectedId)
     : undefined;
+  const jointsAt = (item: SceneItem) => {
+    if (item.kind !== "actor") return undefined;
+    const base =
+      shot?.actorJoints?.[item.id] ??
+      item.mannequinJoints ??
+      mannequinJointsForPose(item.mannequinPose);
+    const action = shot?.actorActions?.[item.id];
+    return action
+      ? actorActionPose(base, action, moveProgress * (shot?.duration ?? 5))
+      : base;
+  };
   const environment = scene.environment;
   const ground = environment?.ground ?? "studio";
   const groundTexture = useMemo(
@@ -501,6 +518,30 @@ function StageContent({
           infiniteGrid
         />
       )}
+      {mode !== "camera" &&
+        scene.items
+          .filter(
+            (item) =>
+              item.kind === "light" && item.powerSourceId && !item.hidden,
+          )
+          .map((light) => {
+            const source = scene.items.find(
+              (item) => item.id === light.powerSourceId && !item.hidden,
+            );
+            if (!source) return null;
+            return (
+              <Line
+                key={`cable-${light.id}`}
+                points={[
+                  [source.x, 0.065, source.z],
+                  [light.x, 0.065, light.z],
+                ]}
+                color="#e28a38"
+                lineWidth={2}
+                raycast={() => null}
+              />
+            );
+          })}
       {visualItems
         .filter(
           (item) =>
@@ -514,7 +555,7 @@ function StageContent({
             <SelectedObject
               key={`${shot?.id ?? "scene"}-${item.id}`}
               item={item}
-              actorJoints={shot?.actorJoints?.[item.id] ?? item.mannequinJoints}
+              actorJoints={jointsAt(item)}
               poseMode={poseMode}
               mode={mode}
               onSelect={onSelect}
@@ -532,9 +573,7 @@ function StageContent({
             >
               <SetPiece
                 item={item}
-                actorJoints={
-                  shot?.actorJoints?.[item.id] ?? item.mannequinJoints
-                }
+                actorJoints={jointsAt(item)}
                 walkPhase={
                   shot?.actorPaths?.[item.id]
                     ? moveProgress * Math.PI * 6

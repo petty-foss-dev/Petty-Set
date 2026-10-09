@@ -16,10 +16,12 @@ import {
 } from "../src/model.ts";
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
+import { actorActionPose } from "../src/actorActions.ts";
 
 test("undo restores a deleted shot and redo removes it again", () => {
   const project = sampleProject();
   const shotId = project.scenes[0].shots[0].id;
+  const originalOrder = [...project.scenes[0].shootOrder];
   const edited = historyReducer(projectHistory(project), {
     type: "edit",
     update: (current) => ({
@@ -29,7 +31,7 @@ test("undo restores a deleted shot and redo removes it again", () => {
   });
   const restored = historyReducer(edited, { type: "undo" });
   assert.equal(restored.present.scenes[0].shots[0].id, shotId);
-  assert.deepEqual(restored.present.scenes[0].shootOrder, [shotId]);
+  assert.deepEqual(restored.present.scenes[0].shootOrder, originalOrder);
   assert.equal(
     historyReducer(restored, { type: "redo" }).present.scenes[0].shots.length,
     0,
@@ -205,7 +207,7 @@ test("mannequin joints are saved per shot and validated", () => {
   scene.shots.push(secondShot);
   scene.shootOrder.push(secondShot.id);
   assert.equal(isProject(project), true);
-  assert.equal(scene.shots[1].actorJoints[actor.id].rightArmLift, 0);
+  assert.equal(scene.shots.at(-1).actorJoints[actor.id].rightArmLift, 0);
   const invalid = structuredClone(project);
   invalid.scenes[0].shots[0].actorJoints[actor.id].rightArmLift = 220;
   assert.equal(isProject(invalid), false);
@@ -213,6 +215,32 @@ test("mannequin joints are saved per shot and validated", () => {
   orphan.scenes[0].shots[0].actorJoints.missing =
     mannequinJointsForPose("pointing");
   assert.equal(isProject(orphan), false);
+});
+
+test("furnished set connects two camera setups, actor actions, and power", () => {
+  const project = sampleProject();
+  const scene = project.scenes[0];
+  assert.equal(isProject(project), true);
+  assert.equal(scene.shots.length, 2);
+  assert.notEqual(scene.shots[0].cameraId, scene.shots[1].cameraId);
+  assert.ok(scene.items.some((item) => item.kind === "power"));
+  assert.equal(
+    scene.items.filter((item) => item.kind === "light" && item.powerSourceId)
+      .length,
+    2,
+  );
+  const action = Object.values(scene.shots[0].actorActions)[0];
+  const neutral = mannequinJointsForPose("neutral");
+  assert.deepEqual(actorActionPose(neutral, action, 0), neutral);
+  assert.notDeepEqual(actorActionPose(neutral, action, 0.6), neutral);
+  const invalidAction = structuredClone(project);
+  Object.values(invalidAction.scenes[0].shots[0].actorActions)[0].speed = 9;
+  assert.equal(isProject(invalidAction), false);
+  const brokenPower = structuredClone(project);
+  brokenPower.scenes[0].items.find(
+    (item) => item.kind === "light",
+  ).powerSourceId = "missing";
+  assert.equal(isProject(brokenPower), false);
 });
 
 test("project import rejects asset data without a GLB 2 header", () => {
@@ -271,5 +299,5 @@ test("shot list CSV preserves order and escapes production notes", () => {
   const csv = shotListCSV(scene, scene.shots);
   assert.ok(csv.startsWith("\uFEFF"));
   assert.ok(csv.includes('"Move to ""door"", then hold\nfor cue"'));
-  assert.ok(csv.includes('"Super 35","35","2.8","5.5","16:9"'));
+  assert.ok(csv.includes('"Super 35","50","2.8","5.5","16:9"'));
 });

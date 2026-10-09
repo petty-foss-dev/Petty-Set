@@ -1,11 +1,14 @@
 import { aspectRatios, sensors } from "./cinematography.ts";
 import type { AspectRatio, SensorId } from "./cinematography.ts";
+import { actorActions } from "./actorActions.ts";
+import type { ActorAction } from "./actorActions.ts";
 
 export type ItemKind =
   | "wall"
   | "actor"
   | "camera"
   | "light"
+  | "power"
   | "table"
   | "chair"
   | "box"
@@ -181,6 +184,9 @@ export interface SceneItem {
   focusDistance?: number;
   color?: string;
   lightType?: "softbox" | "spot" | "practical";
+  powerWatts?: number;
+  capacityWatts?: number;
+  powerSourceId?: string;
   facadeStyle?: "storefront" | "brick" | "theater";
   signText?: string;
   surfaceStyle?: "plain" | "road" | "sidewalk";
@@ -210,6 +216,7 @@ export interface Shot {
   actorMarks?: Record<string, ActorMark>;
   actorPaths?: Record<string, ActorPath>;
   actorJoints?: Record<string, MannequinJoints>;
+  actorActions?: Record<string, ActorAction>;
   cameraEnd?: { x: number; z: number; height: number; rotation: number };
   cameraWaypoints?: {
     x: number;
@@ -255,6 +262,7 @@ const itemKinds: ItemKind[] = [
   "actor",
   "camera",
   "light",
+  "power",
   "table",
   "chair",
   "box",
@@ -381,6 +389,16 @@ export function isProject(value: unknown): value is Project {
           !["softbox", "spot", "practical"].includes(
             item.lightType as string,
           )) ||
+        (item.powerWatts !== undefined &&
+          (item.kind !== "light" ||
+            !isFiniteNumber(item.powerWatts) ||
+            item.powerWatts <= 0)) ||
+        (item.capacityWatts !== undefined &&
+          (item.kind !== "power" ||
+            !isFiniteNumber(item.capacityWatts) ||
+            item.capacityWatts <= 0)) ||
+        (item.powerSourceId !== undefined &&
+          (item.kind !== "light" || !isString(item.powerSourceId))) ||
         (item.facadeStyle !== undefined &&
           (item.kind !== "facade" ||
             !["storefront", "brick", "theater"].includes(
@@ -427,6 +445,14 @@ export function isProject(value: unknown): value is Project {
       }
       items.set(item.id, item.kind as ItemKind);
     }
+    if (
+      scene.items.some(
+        (item) =>
+          item.powerSourceId !== undefined &&
+          items.get(item.powerSourceId) !== "power",
+      )
+    )
+      return false;
     const shotIds = new Set<string>();
     for (const shot of scene.shots) {
       if (
@@ -468,6 +494,21 @@ export function isProject(value: unknown): value is Project {
         if (!isRecord(shot.actorJoints)) return false;
         for (const [actorId, joints] of Object.entries(shot.actorJoints)) {
           if (items.get(actorId) !== "actor" || !isMannequinJoints(joints))
+            return false;
+        }
+      }
+      if (shot.actorActions !== undefined) {
+        if (!isRecord(shot.actorActions)) return false;
+        for (const [actorId, action] of Object.entries(shot.actorActions)) {
+          if (
+            items.get(actorId) !== "actor" ||
+            !isRecord(action) ||
+            !actorActions.some((entry) => entry.id === action.id) ||
+            typeof action.loop !== "boolean" ||
+            !isFiniteNumber(action.speed) ||
+            action.speed < 0.25 ||
+            action.speed > 3
+          )
             return false;
         }
       }
@@ -555,6 +596,17 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
         intensity: 2,
         spread: 45,
         color: "#fff4df",
+        powerWatts: 150,
+      };
+    case "power":
+      return {
+        ...base,
+        width: 0.48,
+        height: 0.55,
+        depth: 0.32,
+        x: -2,
+        z: 2,
+        capacityWatts: 2000,
       };
     case "table":
       return { ...base, width: 1.7, height: 0.75, depth: 0.9 };
@@ -738,21 +790,52 @@ export function sampleProject(): Project {
 
 export function furnishedScene(): SetScene {
   const camera = makeItem("camera", 1);
+  const reverseCamera = {
+    ...makeItem("camera", 2),
+    name: "Camera B · reverse",
+    x: 2.3,
+    z: 1.2,
+    rotation: 55,
+    height: 1.5,
+    focalLength: 35,
+    focusDistance: 3.5,
+  };
+  const power = {
+    ...makeItem("power", 1),
+    name: "Set distro",
+    x: -3.2,
+    z: 1.9,
+  };
+  const leftWall = {
+    ...makeItem("wall", 2),
+    name: "Left wall · doorway",
+    x: -4,
+    z: -0.4,
+    width: 6,
+    rotation: 90,
+    opening: {
+      type: "door" as const,
+      offset: 1.15,
+      width: 1.05,
+      height: 2.15,
+      sill: 0,
+    },
+  };
   const actorA = {
     ...makeItem("actor", 1),
     name: "Mara",
     x: -0.65,
     z: -0.8,
-    rotation: -25,
+    rotation: -140,
   };
   const actorB = {
     ...makeItem("actor", 2),
     name: "Eli",
     x: 0.8,
     z: -0.65,
-    rotation: 25,
+    rotation: 140,
   };
-  const items = [
+  const baseItems: SceneItem[] = [
     {
       ...makeItem("wall", 1),
       name: "Back wall · window",
@@ -766,21 +849,7 @@ export function furnishedScene(): SetScene {
         sill: 0.85,
       },
     },
-    {
-      ...makeItem("wall", 2),
-      name: "Left wall · doorway",
-      x: -4,
-      z: -0.4,
-      width: 6,
-      rotation: 90,
-      opening: {
-        type: "door" as const,
-        offset: 1.15,
-        width: 1.05,
-        height: 2.15,
-        sill: 0,
-      },
-    },
+    leftWall,
     {
       ...makeItem("wall", 3),
       name: "Right wall",
@@ -835,6 +904,9 @@ export function furnishedScene(): SetScene {
       rotation: 90,
     },
     { ...makeItem("plant", 1), name: "Potted tree", x: 3.05, z: -2.55 },
+    { ...makeItem("table", 2), name: "Side room desk", x: -5.7, z: -1.5 },
+    { ...makeItem("chair", 2), name: "Desk chair", x: -5.6, z: -0.35 },
+    { ...makeItem("plant", 2), name: "Side room plant", x: -6.7, z: -2.6 },
     actorA,
     actorB,
     {
@@ -843,9 +915,11 @@ export function furnishedScene(): SetScene {
       z: 5.1,
       height: 1.2,
       rotation: 0,
-      focalLength: 35,
+      focalLength: 50,
       focusDistance: 5.5,
     },
+    reverseCamera,
+    power,
     {
       ...makeItem("light", 1),
       name: "Key · softbox",
@@ -853,6 +927,7 @@ export function furnishedScene(): SetScene {
       z: 1.1,
       rotation: -28,
       height: 2.75,
+      powerSourceId: power.id,
     },
     {
       ...makeItem("light", 2),
@@ -862,22 +937,40 @@ export function furnishedScene(): SetScene {
       rotation: 30,
       height: 2.35,
       intensity: 1.3,
+      powerSourceId: power.id,
     },
   ];
+  const items = extendRoom(baseItems, leftWall.id, 3.2);
   const shot = {
     id: id(),
-    title: "Wide master",
+    title: "Camera A · two-shot",
     cameraId: camera.id,
     notes: "Establish the room and both actors.",
     duration: 5,
     aspectRatio: "16:9" as AspectRatio,
+    actorActions: {
+      [actorA.id]: { id: "talking" as const, loop: true, speed: 1 },
+      [actorB.id]: { id: "listening" as const, loop: true, speed: 1 },
+    },
+  };
+  const reverseShot: Shot = {
+    id: id(),
+    title: "Camera B · reverse",
+    cameraId: reverseCamera.id,
+    notes: "Compare the reverse angle across the conversation.",
+    duration: 5,
+    aspectRatio: "16:9",
+    actorActions: {
+      [actorA.id]: { id: "listening", loop: true, speed: 1 },
+      [actorB.id]: { id: "talking", loop: true, speed: 1 },
+    },
   };
   return {
     id: id(),
     name: "The Conversation · Interior",
     items,
-    shots: [shot],
-    shootOrder: [shot.id],
+    shots: [shot, reverseShot],
+    shootOrder: [shot.id, reverseShot.id],
   };
 }
 

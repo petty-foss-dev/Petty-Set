@@ -5,6 +5,7 @@ import type { MannequinJoints, SceneItem } from "./model";
 import Mannequin from "./Mannequin";
 import { Bench, Tree, Vehicle } from "./OutdoorAssets";
 import { Barrel, Facade, Streetlamp, Surface } from "./BacklotAssets";
+import PowerSource from "./PowerSource";
 
 const ImportedAsset = lazy(() => import("./ImportedAsset"));
 
@@ -266,6 +267,20 @@ function Table({ item }: { item: SceneItem }) {
         size={[0.26, 0.035, 0.19]}
         color="#c0b193"
       />
+      <Box
+        position={[0, h - 0.035, d / 2 - 0.015]}
+        size={[w - 0.08, 0.014, 0.018]}
+        color="#b8895b"
+      />
+      {[-1, 1].map((side) => (
+        <Rod
+          key={side}
+          from={[side * (w / 2 - 0.13), h - 0.18, -d / 2 + 0.13]}
+          to={[side * (w / 2 - 0.13), h - 0.18, d / 2 - 0.13]}
+          radius={0.013}
+          color="#a77952"
+        />
+      ))}
     </group>
   );
 }
@@ -377,6 +392,10 @@ function Plant({ item }: { item: SceneItem }) {
         <cylinderGeometry args={[0.19, 0.13, 0.46, 12]} />
         <meshStandardMaterial color="#9c8065" roughness={0.9} />
       </mesh>
+      <mesh position={[0, 0.46, 0]}>
+        <torusGeometry args={[0.165, 0.021, 7, 16]} />
+        <meshStandardMaterial color="#c5a386" roughness={0.9} />
+      </mesh>
       <Rod
         from={[0, 0.45, 0]}
         to={[0, h - 0.22, 0]}
@@ -405,6 +424,18 @@ function Plant({ item }: { item: SceneItem }) {
                 color={i % 2 ? "#637c5c" : "#738e65"}
                 roughness={0.95}
               />
+            </mesh>
+            <mesh
+              position={[
+                Math.cos(a + 0.36) * r * 0.78,
+                y + 0.24,
+                Math.sin(a + 0.36) * r * 0.78,
+              ]}
+              rotation={[0, -a - 0.36, -0.55]}
+              castShadow
+            >
+              <sphereGeometry args={[0.16, 8, 6]} />
+              <meshStandardMaterial color="#82946d" roughness={0.96} />
             </mesh>
           </group>
         );
@@ -444,6 +475,11 @@ function Camera({ item }: { item: SceneItem }) {
         color={metal}
       />
       <Box position={[0, h + 0.08, 0]} size={bodySize} color="#282b2b" />
+      <Box
+        position={[0, h + 0.08, bodySize[2] / 2 + 0.006]}
+        size={[bodySize[0] * 0.63, bodySize[1] * 0.48, 0.012]}
+        color="#58665e"
+      />
       {body !== "mirrorless" && (
         <Box
           position={[0, h + 0.25, 0.07]}
@@ -472,6 +508,17 @@ function Camera({ item }: { item: SceneItem }) {
       >
         <cylinderGeometry args={[0.13, 0.16, lensLength, 20]} />
         <meshStandardMaterial color="#202424" roughness={0.45} />
+      </mesh>
+      <mesh
+        position={[0, h + 0.07, -(bodySize[2] / 2 + lensLength * 0.62)]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
+        <cylinderGeometry args={[0.164, 0.164, 0.025, 20]} />
+        <meshStandardMaterial
+          color="#4d5350"
+          metalness={0.6}
+          roughness={0.38}
+        />
       </mesh>
       <mesh
         position={[0, h + 0.07, -(bodySize[2] / 2 + lensLength)]}
@@ -513,6 +560,11 @@ function Light({ item }: { item: SceneItem }) {
         );
       })}
       <Rod from={[0, 0.3, 0]} to={[0, h, 0]} radius={0.025} color={metal} />
+      <Box
+        position={[0, h * 0.55, 0]}
+        size={[0.12, 0.1, 0.12]}
+        color="#77746b"
+      />
       <Box position={[0, h, 0]} size={[0.42, 0.36, 0.3]} color="#303739" />
       {fixture === "softbox" ? (
         <>
@@ -527,6 +579,14 @@ function Light({ item }: { item: SceneItem }) {
             color={item.color ?? "#fff3d6"}
             roughness={0.3}
           />
+          {[-1, 1].map((side) => (
+            <Box
+              key={side}
+              position={[side * 0.36, h, -0.31]}
+              size={[0.03, 0.57, 0.25]}
+              color="#252a2a"
+            />
+          ))}
         </>
       ) : fixture === "spot" ? (
         <mesh
@@ -595,6 +655,8 @@ export default function SetPiece({
       return <Camera item={item} />;
     case "light":
       return <Light item={item} />;
+    case "power":
+      return <PowerSource item={item} />;
     case "asset":
       return (
         <AssetBoundary item={item}>

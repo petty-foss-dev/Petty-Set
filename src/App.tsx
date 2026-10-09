@@ -71,6 +71,8 @@ import { historyReducer, projectHistory } from "./history";
 import { aspectRatios, cameraOptics, sensors } from "./cinematography";
 import type { AspectRatio, SensorId } from "./cinematography";
 import { shotListCSV } from "./shotList";
+import { actorActions } from "./actorActions";
+import type { ActorAction } from "./actorActions";
 import * as THREE from "three";
 import "./App.css";
 
@@ -79,6 +81,7 @@ const itemIcons: Record<ItemKind, typeof Square> = {
   actor: UserRound,
   camera: Camera,
   light: LampDesk,
+  power: Lightbulb,
   table: LayoutGrid,
   chair: Grip,
   box: Square,
@@ -100,6 +103,7 @@ const itemNames: Record<ItemKind, string> = {
   actor: "Actor",
   camera: "Camera",
   light: "Light",
+  power: "Power source",
   table: "Table",
   chair: "Chair",
   box: "Block",
@@ -139,6 +143,7 @@ function App() {
   const [mode, setMode] = useState<ViewMode>("stage");
   const [tool, setTool] = useState<"select" | "wall">("select");
   const [poseMode, setPoseMode] = useState(false);
+  const [actionSearch, setActionSearch] = useState("");
   const [order, setOrder] = useState<"story" | "shoot">("story");
   const [showAdd, setShowAdd] = useState(false);
   const [showExport, setShowExport] = useState(false);
@@ -173,6 +178,16 @@ function App() {
     [scene, shot],
   );
   const selected = stageScene.items.find((value) => value.id === selectedId);
+  const selectedPowerSource = scene.items.find(
+    (item) => item.id === selected?.powerSourceId,
+  );
+  const selectedPowerLoads = scene.items.filter(
+    (item) => item.powerSourceId === selected?.id,
+  );
+  const assignedWatts = selectedPowerLoads.reduce(
+    (sum, item) => sum + (item.powerWatts ?? 150),
+    0,
+  );
   const selectedJoints =
     selected?.kind === "actor"
       ? (shot?.actorJoints?.[selected.id] ??
@@ -185,8 +200,13 @@ function App() {
       : scene.shootOrder
           .map((value) => scene.shots.find((shot) => shot.id === value))
           .filter((value): value is Shot => !!value);
+  const activeShotIndex = orderedShots.findIndex(
+    (entry) => entry.id === shot?.id,
+  );
   const hasMotion =
-    !!shot?.cameraEnd || !!Object.keys(shot?.actorPaths ?? {}).length;
+    !!shot?.cameraEnd ||
+    !!Object.keys(shot?.actorPaths ?? {}).length ||
+    !!Object.keys(shot?.actorActions ?? {}).length;
 
   useEffect(() => {
     localStorage.setItem("petty-set-project", JSON.stringify(project));
@@ -195,7 +215,9 @@ function App() {
   useEffect(() => {
     if (
       !playingMove ||
-      (!shot?.cameraEnd && !Object.keys(shot?.actorPaths ?? {}).length)
+      (!shot?.cameraEnd &&
+        !Object.keys(shot?.actorPaths ?? {}).length &&
+        !Object.keys(shot?.actorActions ?? {}).length)
     )
       return;
     let handle = 0;
@@ -210,11 +232,23 @@ function App() {
     };
     handle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(handle);
-  }, [playingMove, shot?.cameraEnd, shot?.actorPaths, shot?.duration]);
+  }, [
+    playingMove,
+    shot?.cameraEnd,
+    shot?.actorPaths,
+    shot?.actorActions,
+    shot?.duration,
+  ]);
 
   function resetMove() {
     setPlayingMove(false);
     setMoveProgress(0);
+  }
+
+  function activateShot(entry: Shot) {
+    setShotId(entry.id);
+    resetMove();
+    setSelectedId(entry.cameraId);
   }
 
   useEffect(() => {
@@ -443,23 +477,38 @@ function App() {
       return;
     updateScene((current) => ({
       ...current,
-      items: current.items.filter((item) => item.id !== selected.id),
+      items: current.items
+        .filter((item) => item.id !== selected.id)
+        .map((item) =>
+          item.powerSourceId === selected.id
+            ? { ...item, powerSourceId: undefined }
+            : item,
+        ),
       shots: current.shots
         .filter((value) => value.cameraId !== selected.id)
         .map((value) => {
           if (
             !value.actorMarks?.[selected.id] &&
             !value.actorPaths?.[selected.id] &&
-            !value.actorJoints?.[selected.id]
+            !value.actorJoints?.[selected.id] &&
+            !value.actorActions?.[selected.id]
           )
             return value;
           const actorMarks = { ...value.actorMarks };
           const actorPaths = { ...value.actorPaths };
           const actorJoints = { ...value.actorJoints };
+          const actorActions = { ...value.actorActions };
           delete actorMarks[selected.id];
           delete actorPaths[selected.id];
           delete actorJoints[selected.id];
-          return { ...value, actorMarks, actorPaths, actorJoints };
+          delete actorActions[selected.id];
+          return {
+            ...value,
+            actorMarks,
+            actorPaths,
+            actorJoints,
+            actorActions,
+          };
         }),
       shootOrder: current.shootOrder.filter(
         (value) => !linkedShots.some((shot) => shot.id === value),
@@ -515,6 +564,14 @@ function App() {
             ]),
           )
         : undefined,
+      actorActions: shot?.actorActions
+        ? Object.fromEntries(
+            Object.entries(shot.actorActions).map(([actorId, action]) => [
+              actorId,
+              { ...action },
+            ]),
+          )
+        : undefined,
     };
     updateScene((current) => ({
       ...current,
@@ -555,6 +612,15 @@ function App() {
     } else {
       updateItem(actorId, { mannequinJoints: joints });
     }
+  }
+
+  function updateActorAction(actorId: string, action?: ActorAction) {
+    if (!shot) return;
+    const actorActions = { ...shot.actorActions };
+    if (action) actorActions[actorId] = action;
+    else delete actorActions[actorId];
+    updateShot({ actorActions });
+    resetMove();
   }
 
   function moveShot(direction: -1 | 1) {
@@ -1281,6 +1347,31 @@ function App() {
               captureRef={captureRef}
               moveProgress={moveProgress}
             />
+            {mode === "camera" && orderedShots.length > 1 && (
+              <div className="camera-shot-switch">
+                <button
+                  aria-label="Previous shot camera"
+                  disabled={activeShotIndex <= 0}
+                  onClick={() =>
+                    activateShot(orderedShots[activeShotIndex - 1])
+                  }
+                >
+                  ←
+                </button>
+                <span>
+                  {shot?.title} · {activeShotIndex + 1} / {orderedShots.length}
+                </span>
+                <button
+                  aria-label="Next shot camera"
+                  disabled={activeShotIndex >= orderedShots.length - 1}
+                  onClick={() =>
+                    activateShot(orderedShots[activeShotIndex + 1])
+                  }
+                >
+                  →
+                </button>
+              </div>
+            )}
             {mode === "camera" && shot && (
               <svg
                 className="frame-guide"
@@ -1399,11 +1490,7 @@ function App() {
                 <button
                   key={entry.id}
                   className={`shot-card ${entry.id === shot?.id ? "active" : ""}`}
-                  onClick={() => {
-                    setShotId(entry.id);
-                    resetMove();
-                    setSelectedId(entry.cameraId);
-                  }}
+                  onClick={() => activateShot(entry)}
                 >
                   <div className="shot-thumb">
                     {entry.frame ? (
@@ -1754,6 +1841,87 @@ function App() {
                     ))}
                   </div>
                 </div>
+                {selected.kind === "actor" && shot && (
+                  <div className="field-section actor-action-fields">
+                    <h3>Action on mark</h3>
+                    <input
+                      type="search"
+                      aria-label="Search actor actions"
+                      placeholder="Search actions"
+                      value={actionSearch}
+                      onChange={(event) => setActionSearch(event.target.value)}
+                    />
+                    <div className="action-library">
+                      {actorActions
+                        .filter((action) =>
+                          `${action.label} ${action.detail}`
+                            .toLowerCase()
+                            .includes(actionSearch.toLowerCase()),
+                        )
+                        .map((action) => (
+                          <button
+                            key={action.id}
+                            type="button"
+                            className={
+                              shot.actorActions?.[selected.id]?.id === action.id
+                                ? "active"
+                                : ""
+                            }
+                            onClick={() =>
+                              updateActorAction(selected.id, {
+                                id: action.id,
+                                loop: true,
+                                speed: 1,
+                              })
+                            }
+                          >
+                            <strong>{action.label}</strong>
+                            <small>{action.detail}</small>
+                          </button>
+                        ))}
+                    </div>
+                    {shot.actorActions?.[selected.id] && (
+                      <>
+                        <label className="full-field">
+                          <input
+                            type="checkbox"
+                            checked={shot.actorActions[selected.id].loop}
+                            onChange={(event) =>
+                              updateActorAction(selected.id, {
+                                ...shot.actorActions![selected.id],
+                                loop: event.target.checked,
+                              })
+                            }
+                          />{" "}
+                          Loop throughout the shot
+                        </label>
+                        <label className="full-field">
+                          <span>Action speed</span>
+                          <input
+                            type="range"
+                            min="0.25"
+                            max="3"
+                            step="0.25"
+                            value={shot.actorActions[selected.id].speed}
+                            onChange={(event) =>
+                              updateActorAction(selected.id, {
+                                ...shot.actorActions![selected.id],
+                                speed: Number(event.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => updateActorAction(selected.id)}
+                        >
+                          Clear action
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
                 {selected.kind === "actor" && shot && (
                   <div className="field-section actor-motion-fields">
                     <h3>Actor movement</h3>
@@ -2203,8 +2371,89 @@ function App() {
                         }
                       />
                     </label>
+                    <label className="full-field">
+                      <span>Power draw</span>
+                      <div>
+                        <input
+                          type="number"
+                          min="1"
+                          step="10"
+                          value={selected.powerWatts ?? 150}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              powerWatts: Math.max(
+                                1,
+                                Number(event.target.value),
+                              ),
+                            })
+                          }
+                        />
+                        <em>W</em>
+                      </div>
+                    </label>
+                    <label className="full-field">
+                      <span>Power source</span>
+                      <select
+                        value={selected.powerSourceId ?? ""}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            powerSourceId: event.target.value || undefined,
+                          })
+                        }
+                      >
+                        <option value="">Unassigned</option>
+                        {scene.items
+                          .filter((item) => item.kind === "power")
+                          .map((source) => (
+                            <option key={source.id} value={source.id}>
+                              {source.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    {selectedPowerSource && (
+                      <p className="field-note">
+                        Estimated cable run:{" "}
+                        {Math.hypot(
+                          selected.x - selectedPowerSource.x,
+                          selected.z - selectedPowerSource.z,
+                        ).toFixed(1)}{" "}
+                        m
+                      </p>
+                    )}
                     <p className="field-note">
                       Preview lighting is illustrative, not photometric.
+                    </p>
+                  </div>
+                )}
+                {selected.kind === "power" && (
+                  <div className="field-section">
+                    <h3>Power distribution</h3>
+                    <label className="full-field">
+                      <span>Capacity</span>
+                      <div>
+                        <input
+                          type="number"
+                          min="1"
+                          step="100"
+                          value={selected.capacityWatts ?? 2000}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              capacityWatts: Math.max(
+                                1,
+                                Number(event.target.value),
+                              ),
+                            })
+                          }
+                        />
+                        <em>W</em>
+                      </div>
+                    </label>
+                    <p className="field-note">
+                      {selectedPowerLoads.length} fixtures · {assignedWatts} W
+                      assigned
+                      {assignedWatts > (selected.capacityWatts ?? 2000) &&
+                        " · Over capacity"}
                     </p>
                   </div>
                 )}
