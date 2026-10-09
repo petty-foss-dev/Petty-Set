@@ -21,7 +21,11 @@ import {
   resolveSceneLayers,
 } from "../src/model.ts";
 
-import { cameraOptics } from "../src/cinematography.ts";
+import {
+  cameraOptics,
+  cameraPresets,
+  lensPresets,
+} from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
 import { actorActionPose } from "../src/actorActions.ts";
 import {
@@ -636,6 +640,60 @@ test("sensor and delivery aspect change the effective field of view", () => {
   assert.ok(fullFrame.horizontalFov > s35.horizontalFov);
   assert.ok(widescreen.verticalFov < s35.verticalFov);
   assert.ok(s35.nearFocus < 3 && s35.farFocus > 3);
+});
+
+test("named camera modes use manufacturer active gates in shot optics", () => {
+  const alexaGate = cameraPresets.alexa35.defaultSensor;
+  const alexa = cameraOptics(alexaGate, 35, 2.8, 3, "16:9");
+  const fx3 = cameraOptics(
+    cameraPresets.sonyFx3.defaultSensor,
+    35,
+    2.8,
+    3,
+    "16:9",
+  );
+  assert.ok(Math.abs(alexa.gateWidth - 24.9) < 0.02);
+  assert.ok(Math.abs(alexa.horizontalFov - 39.16) < 0.02);
+  assert.equal(fx3.gateWidth, 35.6);
+  assert.ok(Math.abs(fx3.horizontalFov - 53.91) < 0.02);
+  assert.ok(fx3.horizontalFov > alexa.horizontalFov);
+});
+
+test("camera and lens catalog choices survive project JSON", () => {
+  const project = sampleProject();
+  const camera = project.scenes[0].items.find((item) => item.kind === "camera");
+  assert.ok(camera);
+  camera.cameraPreset = "alexa35";
+  camera.sensor = "alexa35_46k16x9";
+  camera.lensPreset = "zeissCp3_85";
+  camera.focalLength = lensPresets.zeissCp3_85.focalLength;
+  camera.focusDistance = lensPresets.zeissCp3_85.minFocus;
+  const restored = JSON.parse(JSON.stringify(project));
+  assert.equal(isProject(restored), true);
+  const restoredCamera = restored.scenes[0].items.find(
+    (item) => item.id === camera.id,
+  );
+  assert.equal(restoredCamera.cameraPreset, "alexa35");
+  assert.equal(restoredCamera.sensor, "alexa35_46k16x9");
+  assert.equal(restoredCamera.lensPreset, "zeissCp3_85");
+  const sheet = shootDaySVG(
+    project.name,
+    project.scenes[0],
+    project.scenes[0].shots[0],
+  );
+  assert.match(sheet, /ARRI ALEXA 35/);
+  assert.match(sheet, /ZEISS CP\.3 85 mm/);
+  const mismatchedGate = structuredClone(restored);
+  mismatchedGate.scenes[0].items.find((item) => item.id === camera.id).sensor =
+    "sonyFx3";
+  assert.equal(isProject(mismatchedGate), false);
+  const belowCloseFocus = structuredClone(restored);
+  belowCloseFocus.scenes[0].items.find(
+    (item) => item.id === camera.id,
+  ).focusDistance = 0.5;
+  assert.equal(isProject(belowCloseFocus), false);
+  restoredCamera.lensPreset = "unknown-lens";
+  assert.equal(isProject(restored), false);
 });
 
 test("shot list CSV preserves order and escapes production notes", () => {

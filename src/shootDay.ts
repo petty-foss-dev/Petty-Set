@@ -1,5 +1,5 @@
 import type { jsPDF } from "jspdf";
-import { sensors } from "./cinematography.ts";
+import { cameraPresets, lensPresets, sensors } from "./cinematography.ts";
 import { resolveSceneLayers, wallEndpoints, wallOpenings } from "./model.ts";
 import type { SceneItem, SetScene, Shot } from "./model.ts";
 import { resolveLightingPlan } from "./lightingPlans.ts";
@@ -8,6 +8,12 @@ import { floorplanSVG } from "./floorplan.ts";
 const ink = [44, 48, 47] as const;
 const muted = [106, 108, 101] as const;
 const amber = [177, 108, 53] as const;
+
+function cameraGate(camera?: SceneItem): string {
+  const gate = sensors[camera?.sensor ?? "super35"].label;
+  if (!camera?.cameraPreset) return gate;
+  return `${cameraPresets[camera.cameraPreset].label} · ${gate.split(" · ").slice(1).join(" · ")}`;
+}
 
 const xml = (value: string) =>
   value.replace(
@@ -40,6 +46,9 @@ export function shootDaySVG(projectName: string, scene: SetScene, shot: Shot) {
   const camera = items.find(
     (item) => item.id === shot.cameraId && !item.hidden,
   );
+  const lensName = camera?.lensPreset
+    ? lensPresets[camera.lensPreset].label
+    : `${camera?.focalLength ?? 35} mm lens`;
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
   const wallPoints = walls.flatMap(wallEndpoints);
   const minX = wallPoints.length
@@ -69,16 +78,13 @@ export function shootDaySVG(projectName: string, scene: SetScene, shot: Shot) {
   const rows: string[] = [
     section("CAMERA & FRAME", 200),
     text(camera?.name ?? "No camera", 1120, 239, 25),
+    text(cameraGate(camera), 1120, 273),
     text(
-      `${camera?.focalLength ?? 35} mm · f/${camera?.aperture ?? 2.8} · ${sensors[camera?.sensor ?? "super35"].label}`,
-      1120,
-      273,
-    ),
-    text(
-      `Focus ${camera?.focusDistance ?? 3} m · ${shot.aspectRatio ?? "16:9"} · ${shot.duration}s`,
+      `${lensName} · f/${camera?.aperture ?? 2.8} · focus ${camera?.focusDistance ?? 3} m`,
       1120,
       305,
     ),
+    text(`${shot.aspectRatio ?? "16:9"} · ${shot.duration}s`, 1120, 337),
     section("SHOT & SETUP", 371),
     text(
       `${shot.setup || "No setup"} · ${shot.status ?? "planned"}${lightingPlan ? ` · ${lightingPlan.name}` : ""}`,
@@ -158,6 +164,9 @@ export function renderShootDaySheet(
   const lights = visible.filter((item) => item.kind === "light");
   const sources = visible.filter((item) => item.kind === "power");
   const camera = visible.find((item) => item.id === shot.cameraId);
+  const lensName = camera?.lensPreset
+    ? lensPresets[camera.lensPreset].label
+    : `${camera?.focalLength ?? 35} mm lens`;
   const actorMarks = actors.map((item) => ({
     ...item,
     ...shot.actorMarks?.[item.id],
@@ -288,18 +297,19 @@ export function renderShootDaySheet(
   pdf.setFontSize(9);
   label(pdf, camera?.name ?? "No camera", sideX, 46, sideWidth);
   pdf.setFontSize(8);
+  label(pdf, cameraGate(camera), sideX, 51, sideWidth);
   label(
     pdf,
-    `${camera?.focalLength ?? 35} mm  ·  f/${camera?.aperture ?? 2.8}  ·  ${sensors[camera?.sensor ?? "super35"].label}`,
+    `${lensName} · f/${camera?.aperture ?? 2.8} · focus ${camera?.focusDistance ?? 3} m`,
     sideX,
-    52,
+    56,
     sideWidth,
   );
   label(
     pdf,
-    `Focus ${camera?.focusDistance ?? 3} m  ·  ${shot.aspectRatio ?? "16:9"}  ·  ${shot.duration}s`,
+    `${shot.aspectRatio ?? "16:9"} · ${shot.duration}s`,
     sideX,
-    58,
+    61,
     sideWidth,
   );
 

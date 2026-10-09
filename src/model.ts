@@ -1,5 +1,15 @@
-import { aspectRatios, sensors } from "./cinematography.ts";
-import type { AspectRatio, SensorId } from "./cinematography.ts";
+import {
+  aspectRatios,
+  cameraPresets,
+  lensPresets,
+  sensors,
+} from "./cinematography.ts";
+import type {
+  AspectRatio,
+  CameraPresetId,
+  LensPresetId,
+  SensorId,
+} from "./cinematography.ts";
 import { actorActions } from "./actorActions.ts";
 import type { ActorAction } from "./actorActions.ts";
 
@@ -190,7 +200,9 @@ export interface SceneItem {
   spread?: number;
   focalLength?: number;
   cameraBody?: "cinema" | "mirrorless" | "broadcast";
+  cameraPreset?: CameraPresetId;
   sensor?: SensorId;
+  lensPreset?: LensPresetId;
   aperture?: number;
   focusDistance?: number;
   color?: string;
@@ -587,6 +599,24 @@ export function isProject(value: unknown): value is Project {
             ((item.focalLength as number | undefined) ?? 35)) ||
         (item.sensor !== undefined &&
           (!isString(item.sensor) || !(item.sensor in sensors))) ||
+        (item.cameraPreset !== undefined &&
+          (item.kind !== "camera" ||
+            !isString(item.cameraPreset) ||
+            !(item.cameraPreset in cameraPresets))) ||
+        (item.lensPreset !== undefined &&
+          (item.kind !== "camera" ||
+            !isString(item.lensPreset) ||
+            !(item.lensPreset in lensPresets))) ||
+        (item.cameraPreset !== undefined &&
+          !(
+            cameraPresets[item.cameraPreset as CameraPresetId]
+              .sensorModes as readonly string[]
+          ).includes(item.sensor as string)) ||
+        (item.lensPreset !== undefined &&
+          (((item.focalLength as number | undefined) ?? 35) !==
+            lensPresets[item.lensPreset as LensPresetId].focalLength ||
+            ((item.focusDistance as number | undefined) ?? 3) <
+              lensPresets[item.lensPreset as LensPresetId].minFocus)) ||
         ["hidden", "locked"].some(
           (key) => item[key] !== undefined && typeof item[key] !== "boolean",
         ) ||

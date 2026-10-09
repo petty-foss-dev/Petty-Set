@@ -83,8 +83,19 @@ import {
   portableProject,
   saveAsset,
 } from "./assetStore";
-import { aspectRatios, cameraOptics, sensors } from "./cinematography";
-import type { AspectRatio, SensorId } from "./cinematography";
+import {
+  aspectRatios,
+  cameraOptics,
+  cameraPresets,
+  lensPresets,
+  sensors,
+} from "./cinematography";
+import type {
+  AspectRatio,
+  CameraPresetId,
+  LensPresetId,
+  SensorId,
+} from "./cinematography";
 import { shotListCSV } from "./shotList";
 import {
   fixtureLumens,
@@ -1000,7 +1011,9 @@ function App() {
       rotation: source?.rotation ?? 0,
       focalLength: source?.focalLength ?? 35,
       cameraBody: source?.cameraBody ?? "cinema",
+      cameraPreset: source?.cameraPreset,
       sensor: source?.sensor ?? "super35",
+      lensPreset: source?.lensPreset,
       aperture: source?.aperture ?? 2.8,
       focusDistance: source?.focusDistance ?? 3,
     };
@@ -1210,7 +1223,9 @@ function App() {
         rotation: source?.rotation ?? 0,
         focalLength: source?.focalLength ?? 35,
         cameraBody: source?.cameraBody ?? "cinema",
+        cameraPreset: source?.cameraPreset,
         sensor: source?.sensor ?? "super35",
+        lensPreset: source?.lensPreset,
         aperture: source?.aperture ?? 2.8,
         focusDistance: source?.focusDistance ?? 3,
       }));
@@ -3719,21 +3734,59 @@ function App() {
                   <div className="field-section">
                     <h3>Camera and lens</h3>
                     <label className="full-field">
-                      <span>Body</span>
+                      <span>Camera model</span>
                       <select
-                        value={selected.cameraBody ?? "cinema"}
-                        onChange={(event) =>
-                          updateItem(selected.id, {
-                            cameraBody: event.target
-                              .value as SceneItem["cameraBody"],
-                          })
-                        }
+                        value={selected.cameraPreset ?? "generic"}
+                        onChange={(event) => {
+                          const cameraPreset = event.target
+                            .value as CameraPresetId;
+                          if (cameraPreset in cameraPresets) {
+                            const preset = cameraPresets[cameraPreset];
+                            updateItem(selected.id, {
+                              cameraPreset,
+                              cameraBody: preset.cameraBody,
+                              sensor: preset.defaultSensor,
+                            });
+                          } else {
+                            updateItem(selected.id, {
+                              cameraPreset: undefined,
+                              sensor: [
+                                "super35",
+                                "fullFrame",
+                                "microFourThirds",
+                              ].includes(selected.sensor ?? "super35")
+                                ? selected.sensor
+                                : "super35",
+                            });
+                          }
+                        }}
                       >
-                        <option value="cinema">Cinema rig</option>
-                        <option value="mirrorless">Mirrorless body</option>
-                        <option value="broadcast">Broadcast camera</option>
+                        <option value="generic">Generic / custom</option>
+                        {Object.entries(cameraPresets).map(([id, preset]) => (
+                          <option key={id} value={id}>
+                            {preset.label}
+                          </option>
+                        ))}
                       </select>
                     </label>
+                    {!selected.cameraPreset && (
+                      <label className="full-field">
+                        <span>Rig shape</span>
+                        <select
+                          value={selected.cameraBody ?? "cinema"}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              cameraBody: event.target
+                                .value as SceneItem["cameraBody"],
+                            })
+                          }
+                        >
+                          <option value="cinema">Cinema rig</option>
+                          <option value="mirrorless">Mirrorless body</option>
+                          <option value="broadcast">Broadcast camera</option>
+                        </select>
+                      </label>
+                    )}
                     <label className="full-field">
                       <span>Sensor gate</span>
                       <select
@@ -3744,9 +3797,14 @@ function App() {
                           })
                         }
                       >
-                        {Object.entries(sensors).map(([id, sensor]) => (
+                        {(selected.cameraPreset
+                          ? cameraPresets[selected.cameraPreset].sensorModes
+                          : ["super35", "fullFrame", "microFourThirds"]
+                        ).map((id) => (
                           <option key={id} value={id}>
-                            {sensor.label} · {sensor.width} × {sensor.height} mm
+                            {sensors[id as SensorId].label} ·{" "}
+                            {sensors[id as SensorId].width} ×{" "}
+                            {sensors[id as SensorId].height} mm
                           </option>
                         ))}
                       </select>
@@ -3755,28 +3813,66 @@ function App() {
                       <span>Lens preset</span>
                       <select
                         value={
-                          [18, 24, 35, 50, 85].includes(
+                          selected.lensPreset ??
+                          ([18, 24, 35, 50, 85].includes(
                             selected.focalLength ?? 35,
                           )
-                            ? (selected.focalLength ?? 35)
-                            : "custom"
+                            ? `generic-${selected.focalLength ?? 35}`
+                            : "custom")
                         }
                         onChange={(event) => {
-                          const focalLength = Number(event.target.value);
-                          if (Number.isFinite(focalLength))
-                            updateItem(selected.id, { focalLength });
+                          const choice = event.target.value;
+                          if (choice in lensPresets) {
+                            const lensPreset = choice as LensPresetId;
+                            const preset = lensPresets[lensPreset];
+                            updateItem(selected.id, {
+                              lensPreset,
+                              focalLength: preset.focalLength,
+                              focusDistance: Math.max(
+                                selected.focusDistance ?? 3,
+                                preset.minFocus,
+                              ),
+                            });
+                          } else if (choice.startsWith("generic-")) {
+                            updateItem(selected.id, {
+                              lensPreset: undefined,
+                              focalLength: Number(choice.slice(8)),
+                            });
+                          } else {
+                            updateItem(selected.id, { lensPreset: undefined });
+                          }
                         }}
                       >
-                        {[18, 24, 35, 50, 85].map((mm) => (
-                          <option key={mm} value={mm}>
-                            {mm} mm
-                          </option>
-                        ))}
+                        <optgroup label="Generic focal lengths">
+                          {[18, 24, 35, 50, 85].map((mm) => (
+                            <option key={mm} value={`generic-${mm}`}>
+                              {mm} mm
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="ZEISS Compact Prime CP.3">
+                          {Object.entries(lensPresets).map(([id, lens]) => (
+                            <option key={id} value={id}>
+                              {lens.label} · T{lens.minTStop}
+                            </option>
+                          ))}
+                        </optgroup>
                         {![18, 24, 35, 50, 85].includes(
                           selected.focalLength ?? 35,
-                        ) && <option value="custom">Custom</option>}
+                        ) &&
+                          !selected.lensPreset && (
+                            <option value="custom">Custom</option>
+                          )}
                       </select>
                     </label>
+                    {selected.lensPreset && (
+                      <p className="field-note">
+                        T{lensPresets[selected.lensPreset].minTStop} maximum
+                        transmission · close focus{" "}
+                        {lensPresets[selected.lensPreset].minFocus} m. Lens
+                        mount must be checked for the physical setup.
+                      </p>
+                    )}
                     <label className="full-field">
                       <span>Focal length</span>
                       <div>
@@ -3792,6 +3888,7 @@ function App() {
                             );
                             updateItem(selected.id, {
                               focalLength,
+                              lensPreset: undefined,
                               focusDistance: Math.max(
                                 selected.focusDistance ?? 3,
                                 focalLength / 1000 + 0.01,
@@ -3803,7 +3900,7 @@ function App() {
                       </div>
                     </label>
                     <label className="full-field">
-                      <span>Aperture</span>
+                      <span>f-number for focus estimate</span>
                       <div>
                         <input
                           type="number"
@@ -3831,6 +3928,9 @@ function App() {
                           min={Math.max(
                             0.1,
                             (selected.focalLength ?? 35) / 1000 + 0.01,
+                            selected.lensPreset
+                              ? lensPresets[selected.lensPreset].minFocus
+                              : 0,
                           )}
                           step="0.1"
                           value={selected.focusDistance ?? 3}
@@ -3839,6 +3939,9 @@ function App() {
                               focusDistance: Math.max(
                                 0.1,
                                 (selected.focalLength ?? 35) / 1000 + 0.01,
+                                selected.lensPreset
+                                  ? lensPresets[selected.lensPreset].minFocus
+                                  : 0,
                                 Number(event.target.value),
                               ),
                             })
@@ -3847,6 +3950,12 @@ function App() {
                         <em>m</em>
                       </div>
                     </label>
+                    {selected.lensPreset && (
+                      <p className="field-note">
+                        T-stop rates light transmission. The f-number above is
+                        separate and drives the approximate focus range.
+                      </p>
+                    )}
                     {selected.id === cameraItem?.id && optics && (
                       <p className="field-note">
                         {optics.horizontalFov.toFixed(1)}° ×{" "}
