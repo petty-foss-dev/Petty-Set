@@ -103,10 +103,11 @@ interface Props {
   scene: SetScene;
   shot?: Shot;
   selectedId?: string;
+  selectedIds: string[];
   mode: ViewMode;
   tool: "select" | "wall" | "room" | "polygon" | "corner" | "calibrate";
   poseMode: boolean;
-  onSelect: (id?: string) => void;
+  onSelect: (id?: string, extend?: boolean) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
   onPoseJoints: (id: string, joints: MannequinJoints) => void;
   onAddWall: (
@@ -322,7 +323,7 @@ function SelectedObject({
   actorJoints?: MannequinJoints;
   poseMode: boolean;
   mode: ViewMode;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, extend?: boolean) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
   onPoseJoints: (id: string, joints: MannequinJoints) => void;
 }) {
@@ -362,7 +363,7 @@ function SelectedObject({
         rotation={[0, (item.rotation * Math.PI) / 180, 0]}
         onPointerDown={(event) => {
           event.stopPropagation();
-          onSelect(item.id);
+          onSelect(item.id, event.nativeEvent.shiftKey);
         }}
       >
         <SetPiece item={item} actorJoints={actorJoints} />
@@ -391,6 +392,7 @@ function StageContent({
   scene,
   shot,
   selectedId,
+  selectedIds,
   mode,
   tool,
   poseMode,
@@ -534,7 +536,7 @@ function StageContent({
 
   const select = (event: ThreeEvent<PointerEvent>, id: string) => {
     event.stopPropagation();
-    onSelect(id);
+    onSelect(id, event.nativeEvent.shiftKey);
   };
   return (
     <>
@@ -958,6 +960,7 @@ function StageContent({
         )
         .map((item) =>
           item.id === selectedId &&
+          selectedIds.length === 1 &&
           mode !== "camera" &&
           (tool === "select" || mode !== "plan") &&
           !item.locked ? (
@@ -989,6 +992,27 @@ function StageContent({
                     : undefined
                 }
               />
+              {selectedIds.includes(item.id) && mode !== "camera" && (
+                <mesh
+                  position={[0, Math.max(0.3, item.height / 2), 0]}
+                  raycast={() => null}
+                >
+                  <boxGeometry
+                    args={[
+                      Math.max(0.4, item.width + 0.12),
+                      Math.max(0.5, item.height + 0.12),
+                      Math.max(0.4, item.depth + 0.12),
+                    ]}
+                  />
+                  <meshBasicMaterial
+                    color="#f59b42"
+                    wireframe
+                    transparent
+                    opacity={0.7}
+                    depthTest={false}
+                  />
+                </mesh>
+              )}
             </group>
           ),
         )}

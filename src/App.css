@@ -1479,6 +1479,48 @@ button:focus-visible {
   background: #f2dfc3;
   box-shadow: inset 3px 0 #bd7644;
 }
+.batch-inspector p {
+  color: #7b746b;
+  font-size: 12px;
+  margin: 0 0 16px;
+}
+.batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.batch-actions button,
+.batch-position button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #cfc1ae;
+  border-radius: 6px;
+  background: #f7f0e6;
+  color: #493f35;
+  cursor: pointer;
+}
+.batch-position {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.batch-position label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+.batch-position input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.batch-position button {
+  grid-column: 1 / -1;
+  justify-content: center;
+}
 .object-icon {
   color: #a16d48;
 }

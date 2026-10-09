@@ -195,7 +195,24 @@ function App() {
   const [shotId, setShotId] = useState<string | undefined>(
     project.scenes[0].shots[0]?.id,
   );
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedId, setPrimaryId] = useState<string>();
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [groupDelta, setGroupDelta] = useState({ x: 0, z: 0 });
+  function setSelectedId(value?: string) {
+    setPrimaryId(value);
+    setSelectedIds(value ? [value] : []);
+  }
+  function selectObject(value?: string, extend = false) {
+    if (!value || !extend) {
+      setSelectedId(value);
+      return;
+    }
+    const next = selectedIds.includes(value)
+      ? selectedIds.filter((id) => id !== value)
+      : [...selectedIds, value];
+    setSelectedIds(next);
+    setPrimaryId(next.at(-1));
+  }
   const [mode, setMode] = useState<ViewMode>("stage");
   const [lightTraceVisible, setLightTraceVisible] = useState(false);
   const [stillWidth, setStillWidth] = useState(1920);
@@ -258,6 +275,9 @@ function App() {
     ? sampleFloorIlluminance(stageScene.items, currentLightSample)
     : null;
   const selected = stageScene.items.find((value) => value.id === selectedId);
+  const selectedItems = selectedIds
+    .map((id) => stageScene.items.find((item) => item.id === id))
+    .filter((item): item is SceneItem => !!item);
   const planRoomList = useMemo(() => planRooms(scene.items), [scene.items]);
   const selectedPowerSource = stageScene.items.find(
     (item) => item.id === selected?.powerSourceId,
@@ -613,6 +633,148 @@ function App() {
     };
     updateScene((current) => ({ ...current, items: [...current.items, copy] }));
     setSelectedId(copy.id);
+  }
+
+  function positionSelection(
+    position: (item: SceneItem) => { x: number; z: number },
+  ) {
+    const positions = new Map(
+      selectedItems
+        .filter((item) => !item.locked)
+        .map((item) => [item.id, position(item)]),
+    );
+    if (!positions.size) return;
+    updateScene((current) => ({
+      ...current,
+      items: current.items.map((item) => {
+        const next = positions.get(item.id);
+        if (
+          !next ||
+          item.locked ||
+          (item.kind === "actor" && shot) ||
+          (item.kind === "light" && shot?.activeLightingPlanId)
+        )
+          return item;
+        return { ...item, ...next };
+      }),
+      shots: current.shots.map((entry) => {
+        if (entry.id !== shot?.id) return entry;
+        const actorMarks = { ...entry.actorMarks };
+        let lightingPlans = entry.lightingPlans;
+        for (const item of current.items) {
+          const next = positions.get(item.id);
+          if (!next || item.locked) continue;
+          if (item.kind === "actor") {
+            actorMarks[item.id] = {
+              x: next.x,
+              y: entry.actorMarks?.[item.id]?.y ?? item.y,
+              z: next.z,
+              rotation: entry.actorMarks?.[item.id]?.rotation ?? item.rotation,
+            };
+          } else if (item.kind === "light" && entry.activeLightingPlanId) {
+            lightingPlans = lightingPlans?.map((plan) =>
+              plan.id === entry.activeLightingPlanId
+                ? updateLightingFixture(plan, item, next)
+                : plan,
+            );
+          }
+        }
+        return { ...entry, actorMarks, lightingPlans };
+      }),
+    }));
+  }
+
+  function duplicateSelection() {
+    const copies = selectedItems.map((item) => ({
+      ...item,
+      id: id(),
+      name: `${item.name} copy`,
+      x: item.x + 0.5,
+      z: item.z + 0.5,
+      hidden: false,
+      locked: false,
+    }));
+    const copiedIds = new Map(
+      copies.map((copy, index) => [selectedItems[index].id, copy.id]),
+    );
+    updateScene((current) => ({
+      ...current,
+      items: [
+        ...current.items,
+        ...copies.map((copy) => ({
+          ...copy,
+          powerSourceId: copy.powerSourceId
+            ? (copiedIds.get(copy.powerSourceId) ?? copy.powerSourceId)
+            : undefined,
+        })),
+      ],
+    }));
+    setSelectedIds(copies.map((item) => item.id));
+    setPrimaryId(copies.at(-1)?.id);
+  }
+
+  function deleteSelection() {
+    const ids = new Set(
+      selectedItems.filter((item) => !item.locked).map((item) => item.id),
+    );
+    if (!ids.size) return;
+    const linkedShots = scene.shots.filter((entry) => ids.has(entry.cameraId));
+    if (
+      linkedShots.length &&
+      !window.confirm(
+        `Deleting these cameras will also delete ${linkedShots.length} linked shot${linkedShots.length === 1 ? "" : "s"}. Continue?`,
+      )
+    )
+      return;
+    updateScene((current) => ({
+      ...current,
+      items: current.items
+        .filter((item) => !ids.has(item.id))
+        .map((item) =>
+          ids.has(item.powerSourceId ?? "")
+            ? { ...item, powerSourceId: undefined }
+            : item,
+        ),
+      shots: current.shots
+        .filter((entry) => !ids.has(entry.cameraId))
+        .map((entry) => {
+          const actorMarks = { ...entry.actorMarks };
+          const actorPaths = { ...entry.actorPaths };
+          const actorJoints = { ...entry.actorJoints };
+          const actorActions = { ...entry.actorActions };
+          for (const id of ids) {
+            delete actorMarks[id];
+            delete actorPaths[id];
+            delete actorJoints[id];
+            delete actorActions[id];
+          }
+          const lightingPlans = entry.lightingPlans?.map((plan) => {
+            const fixtures = { ...plan.fixtures };
+            for (const id of ids) delete fixtures[id];
+            for (const [id, fixture] of Object.entries(fixtures)) {
+              if (ids.has(fixture.powerSourceId ?? ""))
+                fixtures[id] = { ...fixture, powerSourceId: null };
+            }
+            return { ...plan, fixtures };
+          });
+          return {
+            ...entry,
+            actorMarks,
+            actorPaths,
+            actorJoints,
+            actorActions,
+            lightingPlans,
+          };
+        }),
+      shootOrder: current.shootOrder.filter(
+        (id) => !linkedShots.some((entry) => entry.id === id),
+      ),
+    }));
+    setSelectedId(undefined);
+    if (shot && ids.has(shot.cameraId)) {
+      setShotId(scene.shots.find((entry) => !ids.has(entry.cameraId))?.id);
+      resetMove();
+    }
   }
 
   function deleteSelected() {
@@ -1720,9 +1882,10 @@ function App() {
               return (
                 <button
                   key={item.id}
-                  className={`object-row ${item.id === selectedId ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelectedId(item.id);
+                  className={`object-row ${selectedIds.includes(item.id) ? "selected" : ""}`}
+                  aria-pressed={selectedIds.includes(item.id)}
+                  onClick={(event) => {
+                    selectObject(item.id, event.shiftKey);
                     setMobilePanel(null);
                   }}
                 >
@@ -2027,6 +2190,7 @@ function App() {
               scene={stageScene}
               shot={shot}
               selectedId={moveProgress > 0 ? undefined : selectedId}
+              selectedIds={moveProgress > 0 ? [] : selectedIds}
               mode={mode}
               lightTraceVisible={lightTraceVisible}
               lightSample={currentLightSample}
@@ -2040,7 +2204,7 @@ function App() {
                 !selected.locked &&
                 mode === "stage"
               }
-              onSelect={setSelectedId}
+              onSelect={selectObject}
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
               onPoseJoints={updateActorJoints}
               onAddWall={addWall}
@@ -2396,7 +2560,87 @@ function App() {
               <X size={18} />
             </button>
           </div>
-          {selected ? (
+          {selectedItems.length > 1 ? (
+            <div className="inspector-content batch-inspector">
+              <div className="inspector-kind">
+                {selectedItems.length} OBJECTS SELECTED
+              </div>
+              <p>
+                {selectedItems.filter((item) => item.locked).length} locked ·
+                Shift-click to change selection
+              </p>
+              <div className="batch-actions">
+                <button
+                  onClick={() =>
+                    positionSelection((item) => ({
+                      x: selectedItems[0].x,
+                      z: item.z,
+                    }))
+                  }
+                >
+                  Align X
+                </button>
+                <button
+                  onClick={() =>
+                    positionSelection((item) => ({
+                      x: item.x,
+                      z: selectedItems[0].z,
+                    }))
+                  }
+                >
+                  Align Z
+                </button>
+              </div>
+              <div className="batch-position">
+                <label>
+                  Move X (m)
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={groupDelta.x}
+                    onChange={(event) =>
+                      setGroupDelta((current) => ({
+                        ...current,
+                        x: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Move Z (m)
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={groupDelta.z}
+                    onChange={(event) =>
+                      setGroupDelta((current) => ({
+                        ...current,
+                        z: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </label>
+                <button
+                  onClick={() =>
+                    positionSelection((item) => ({
+                      x: item.x + groupDelta.x,
+                      z: item.z + groupDelta.z,
+                    }))
+                  }
+                >
+                  Move selection
+                </button>
+              </div>
+              <div className="batch-actions">
+                <button onClick={duplicateSelection}>
+                  <Copy size={15} /> Duplicate selection
+                </button>
+                <button className="delete-button" onClick={deleteSelection}>
+                  <Trash2 size={15} /> Delete unlocked
+                </button>
+              </div>
+            </div>
+          ) : selected ? (
             <div className="inspector-content">
               <div className="inspector-kind">
                 {itemNames[selected.kind].toUpperCase()}
