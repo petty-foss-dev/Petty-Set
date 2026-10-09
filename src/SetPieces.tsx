@@ -1,6 +1,7 @@
 import { Component, Suspense, lazy } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { wallOpenings } from "./model";
 import type { MannequinJoints, SceneItem } from "./model";
 import Mannequin from "./Mannequin";
@@ -40,6 +41,7 @@ const wood = "#8b6548";
 const darkWood = "#634b3a";
 const linen = "#a9a696";
 const metal = "#343a3a";
+const upholsteryGeometry = new RoundedBoxGeometry(1, 1, 1, 3, 0.18);
 
 function Box({
   position,
@@ -58,6 +60,34 @@ function Box({
     <mesh position={position} castShadow receiveShadow>
       <boxGeometry args={size} />
       <meshStandardMaterial color={color} roughness={roughness} map={texture} />
+    </mesh>
+  );
+}
+
+function Cushion({
+  position,
+  size,
+  color,
+  rotation,
+  roughness = 0.96,
+}: {
+  position: [number, number, number];
+  size: [number, number, number];
+  color: string;
+  rotation?: [number, number, number];
+  roughness?: number;
+}) {
+  return (
+    <mesh
+      geometry={upholsteryGeometry}
+      position={position}
+      rotation={rotation}
+      scale={size}
+      castShadow
+      receiveShadow
+      dispose={null}
+    >
+      <meshStandardMaterial color={color} roughness={roughness} />
     </mesh>
   );
 }
@@ -338,20 +368,43 @@ function Table({ item }: { item: SceneItem }) {
   const finish = item.color ?? wood;
   return (
     <group>
-      <Box position={[0, h - 0.045, 0]} size={[w, 0.09, d]} color={finish} />
+      <Cushion
+        position={[0, h - 0.045, 0]}
+        size={[w, 0.09, d]}
+        color={finish}
+        roughness={0.68}
+      />
       <Box
         position={[0, h - 0.13, 0]}
         size={[w - 0.17, 0.12, d - 0.17]}
         color={darkWood}
       />
+      {[-1, 1].map((side) => (
+        <Box
+          key={`plank-${side}`}
+          position={[0, h + 0.002, side * d * 0.16]}
+          size={[w - 0.11, 0.003, 0.004]}
+          color="#6e4b34"
+        />
+      ))}
       {[-1, 1].flatMap((x) =>
         [-1, 1].map((z) => (
-          <Box
-            key={`${x}${z}`}
-            position={[x * (w / 2 - 0.13), (h - 0.12) / 2, z * (d / 2 - 0.13)]}
-            size={[0.085, h - 0.12, 0.085]}
-            color={darkWood}
-          />
+          <group key={`${x}${z}`}>
+            <Box
+              position={[
+                x * (w / 2 - 0.13),
+                (h - 0.12) / 2,
+                z * (d / 2 - 0.13),
+              ]}
+              size={[0.085, h - 0.12, 0.085]}
+              color={darkWood}
+            />
+            <Box
+              position={[x * (w / 2 - 0.13), 0.065, z * (d / 2 - 0.13)]}
+              size={[0.097, 0.025, 0.097]}
+              color="#b09a72"
+            />
+          </group>
         )),
       )}
       <mesh position={[0.18, h + 0.025, 0]} castShadow>
@@ -383,21 +436,43 @@ function Table({ item }: { item: SceneItem }) {
 
 function Chair({ item }: { item: SceneItem }) {
   const w = item.width,
-    d = item.depth;
+    d = item.depth,
+    h = item.height;
   const finish = item.color ?? wood;
   return (
     <group>
-      <Box position={[0, 0.44, 0]} size={[w, 0.12, d]} color={finish} />
-      <Box
-        position={[0, 0.72, -d / 2 + 0.05]}
-        size={[w, 0.52, 0.1]}
-        color={finish}
-      />
-      <Box
-        position={[0, 0.51, 0]}
-        size={[w - 0.08, 0.09, d - 0.09]}
+      <Box position={[0, 0.43, 0]} size={[w, 0.095, d]} color={finish} />
+      <Cushion
+        position={[0, 0.51, 0.02]}
+        size={[w - 0.075, 0.085, d - 0.09]}
         color={linen}
       />
+      {[-1, 1].map((side) => (
+        <group key={`back-${side}`}>
+          <Box
+            position={[side * (w / 2 - 0.04), h * 0.7, -d / 2 + 0.045]}
+            size={[0.07, h * 0.6, 0.08]}
+            color={darkWood}
+          />
+          <mesh
+            position={[side * (w / 2 - 0.04), h - 0.012, -d / 2 + 0.045]}
+            castShadow
+          >
+            <sphereGeometry args={[0.045, 12, 8]} />
+            <meshStandardMaterial color="#a67d52" roughness={0.58} />
+          </mesh>
+        </group>
+      ))}
+      {[0.68, 0.81]
+        .filter((y) => y < h - 0.06)
+        .map((y) => (
+          <Cushion
+            key={y}
+            position={[0, y, -d / 2 + 0.045]}
+            size={[w - 0.12, 0.075, 0.05]}
+            color={finish}
+          />
+        ))}
       {[-1, 1].flatMap((x) =>
         [-1, 1].map((z) => (
           <Box
@@ -408,6 +483,14 @@ function Chair({ item }: { item: SceneItem }) {
           />
         )),
       )}
+      {[-1, 1].map((side) => (
+        <Box
+          key={`stretcher-${side}`}
+          position={[0, 0.18, side * (d / 2 - 0.075)]}
+          size={[w - 0.12, 0.027, 0.028]}
+          color="#76533a"
+        />
+      ))}
     </group>
   );
 }
@@ -418,23 +501,34 @@ function Sofa({ item }: { item: SceneItem }) {
   const upholstery = item.color ?? linen;
   return (
     <group>
-      <Box position={[0, 0.3, 0]} size={[w, 0.36, d]} color="#716f62" />
-      <Box
-        position={[0, 0.67, -d / 2 + 0.1]}
-        size={[w, 0.36, 0.2]}
+      <Box position={[0, 0.26, 0]} size={[w, 0.29, d]} color="#625c52" />
+      <Cushion
+        position={[0, 0.65, -d / 2 + 0.11]}
+        size={[w - 0.04, 0.36, 0.22]}
         color={upholstery}
       />
       {[-1, 1].map((side) => (
         <group key={side}>
-          <Box
+          <Cushion
             position={[side * (w / 2 - 0.11), 0.55, 0]}
-            size={[0.22, 0.38, d]}
+            size={[0.22, 0.4, d]}
+            color={upholstery}
+          />
+          <Cushion
+            position={[side * (w / 4), 0.49, 0.1]}
+            size={[w / 2 - 0.19, 0.17, d - 0.31]}
+            color={upholstery}
+          />
+          <Cushion
+            position={[side * (w / 4), 0.65, -d / 2 + 0.19]}
+            rotation={[-0.11, 0, 0]}
+            size={[w / 2 - 0.21, 0.3, 0.13]}
             color={upholstery}
           />
           <Box
-            position={[side * (w / 4), 0.53, 0.08]}
-            size={[w / 2 - 0.17, 0.16, d - 0.3]}
-            color="#d2cdb8"
+            position={[side * (w / 4), 0.591, 0.1]}
+            size={[w / 2 - 0.25, 0.004, d - 0.37]}
+            color="#ded3bd"
           />
           <Box
             position={[side * (w / 2 - 0.18), 0.085, 0.3]}
@@ -443,6 +537,11 @@ function Sofa({ item }: { item: SceneItem }) {
           />
         </group>
       ))}
+      <Box
+        position={[0, 0.205, d / 2 - 0.025]}
+        size={[w - 0.15, 0.045, 0.045]}
+        color="#8b735d"
+      />
     </group>
   );
 }
@@ -454,6 +553,11 @@ function Shelf({ item }: { item: SceneItem }) {
   const finish = item.color ?? wood;
   return (
     <group>
+      <Box
+        position={[0, h / 2, -d / 2 + 0.014]}
+        size={[w - 0.06, h - 0.07, 0.028]}
+        color="#59412e"
+      />
       {[-1, 1].map((x) => (
         <Box
           key={x}
@@ -472,18 +576,74 @@ function Shelf({ item }: { item: SceneItem }) {
             color={finish}
           />
         ))}
+      <Box
+        position={[0, h - 0.035, 0]}
+        size={[w + 0.08, 0.07, d + 0.07]}
+        color={finish}
+      />
+      <Box
+        position={[0, 0.055, d / 2 - 0.025]}
+        size={[w + 0.04, 0.11, 0.05]}
+        color={darkWood}
+      />
       {[0.48, 0.9, 1.32]
         .filter((y) => y < h)
         .map((y, row) =>
-          Array.from({ length: 9 }, (_, i) => (
-            <Box
-              key={`${row}-${i}`}
-              position={[-w / 2 + 0.2 + (i * (w - 0.3)) / 9, y + 0.17, -0.03]}
-              size={[0.09 + (i % 3) * 0.017, 0.26 + (i % 2) * 0.08, d * 0.62]}
-              color={["#9d7358", "#c8b492", "#67746b", "#b98e65"][i % 4]}
-            />
-          )),
+          Array.from({ length: 9 }, (_, i) => {
+            const x = -w / 2 + 0.2 + (i * (w - 0.3)) / 9;
+            const height = 0.26 + (i % 2) * 0.08;
+            return (
+              <group key={`${row}-${i}`}>
+                <Box
+                  position={[x, y + height / 2 + 0.035, -0.03]}
+                  size={[0.09 + (i % 3) * 0.017, height, d * 0.62]}
+                  color={["#9d7358", "#c8b492", "#67746b", "#b98e65"][i % 4]}
+                />
+                <Box
+                  position={[x, y + height * 0.62, d * 0.28]}
+                  size={[0.067, 0.009, 0.003]}
+                  color="#d8bb88"
+                />
+                <Box
+                  position={[x, y + height * 0.42, d * 0.28]}
+                  size={[0.067, 0.004, 0.003]}
+                  color="#e4d4b1"
+                />
+              </group>
+            );
+          }),
         )}
+    </group>
+  );
+}
+
+function Leaf({
+  position,
+  angle,
+  color,
+  size = 1,
+}: {
+  position: [number, number, number];
+  angle: number;
+  color: string;
+  size?: number;
+}) {
+  return (
+    <group position={position} rotation={[0.22, angle + Math.PI / 2, -0.18]}>
+      <mesh scale={[0.11 * size, 0.025 * size, 0.26 * size]} castShadow>
+        <sphereGeometry args={[1, 10, 7]} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.92}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      <Rod
+        from={[0, 0.015, -0.18 * size]}
+        to={[0, 0.015, 0.18 * size]}
+        radius={0.004}
+        color="#a4b184"
+      />
     </group>
   );
 }
@@ -518,29 +678,21 @@ function Plant({ item }: { item: SceneItem }) {
               radius={0.018}
               color={darkWood}
             />
-            <mesh
+            <Leaf
               position={[Math.cos(a) * r, y + 0.13, Math.sin(a) * r]}
-              rotation={[0, -a, -0.35]}
-              castShadow
-            >
-              <sphereGeometry args={[0.24, 9, 7]} />
-              <meshStandardMaterial
-                color={i % 2 ? "#637c5c" : "#738e65"}
-                roughness={0.95}
-              />
-            </mesh>
-            <mesh
+              angle={a}
+              color={i % 2 ? "#587451" : "#769366"}
+            />
+            <Leaf
               position={[
                 Math.cos(a + 0.36) * r * 0.78,
                 y + 0.24,
                 Math.sin(a + 0.36) * r * 0.78,
               ]}
-              rotation={[0, -a - 0.36, -0.55]}
-              castShadow
-            >
-              <sphereGeometry args={[0.16, 8, 6]} />
-              <meshStandardMaterial color="#82946d" roughness={0.96} />
-            </mesh>
+              angle={a + 0.36}
+              size={0.72}
+              color="#8ca27a"
+            />
           </group>
         );
       })}
@@ -578,18 +730,66 @@ function Camera({ item }: { item: SceneItem }) {
         size={[0.36, 0.07, 0.28]}
         color={metal}
       />
+      <Box
+        position={[0, h - 0.115, 0]}
+        size={[0.12, 0.08, 0.12]}
+        color="#626868"
+      />
       <Box position={[0, h + 0.08, 0]} size={bodySize} color="#282b2b" />
       <Box
-        position={[0, h + 0.08, bodySize[2] / 2 + 0.006]}
+        position={[0, h + 0.08, bodySize[2] / 2 + 0.018]}
+        size={[bodySize[0] * 0.72, bodySize[1] * 0.64, 0.018]}
+        color="#151b1c"
+      />
+      <Box
+        position={[0, h + 0.08, bodySize[2] / 2 + 0.03]}
         size={[bodySize[0] * 0.63, bodySize[1] * 0.48, 0.012]}
         color="#58665e"
       />
+      {[-1, 1].map((side) => (
+        <group key={`camera-side-${side}`}>
+          <Box
+            position={[side * (bodySize[0] / 2 + 0.012), h + 0.07, 0]}
+            size={[0.024, bodySize[1] * 0.72, bodySize[2] * 0.64]}
+            color="#434b4a"
+          />
+          {[-0.08, 0.05].map((z) => (
+            <mesh
+              key={z}
+              position={[side * (bodySize[0] / 2 + 0.029), h + 0.15, z]}
+              rotation={[0, 0, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.019, 0.019, 0.012, 12]} />
+              <meshStandardMaterial
+                color="#b5a175"
+                metalness={0.65}
+                roughness={0.4}
+              />
+            </mesh>
+          ))}
+        </group>
+      ))}
       {body !== "mirrorless" && (
-        <Box
-          position={[0, h + 0.25, 0.07]}
-          size={[0.3, 0.07, 0.17]}
-          color={metal}
-        />
+        <group>
+          <Box
+            position={[0, h + 0.27, 0.07]}
+            size={[0.3, 0.06, 0.17]}
+            color={metal}
+          />
+          {[-1, 1].map((side) => (
+            <Box
+              key={side}
+              position={[side * 0.12, h + 0.34, 0.07]}
+              size={[0.035, 0.11, 0.1]}
+              color="#252b2b"
+            />
+          ))}
+          <Box
+            position={[0, h + 0.405, 0.07]}
+            size={[0.29, 0.035, 0.1]}
+            color="#303736"
+          />
+        </group>
       )}
       {body === "mirrorless" && (
         <Box
@@ -624,6 +824,20 @@ function Camera({ item }: { item: SceneItem }) {
           roughness={0.38}
         />
       </mesh>
+      {[0.25, 0.43, 0.72].map((fraction) => (
+        <mesh
+          key={fraction}
+          position={[0, h + 0.07, -(bodySize[2] / 2 + lensLength * fraction)]}
+          rotation={[Math.PI / 2, 0, 0]}
+        >
+          <cylinderGeometry args={[0.164, 0.164, 0.012, 24]} />
+          <meshStandardMaterial
+            color="#666f6d"
+            metalness={0.7}
+            roughness={0.35}
+          />
+        </mesh>
+      ))}
       <mesh
         position={[0, h + 0.07, -(bodySize[2] / 2 + lensLength)]}
         rotation={[Math.PI / 2, 0, 0]}
@@ -670,6 +884,11 @@ function Light({ item }: { item: SceneItem }) {
         size={[0.12, 0.1, 0.12]}
         color="#77746b"
       />
+      <Box
+        position={[0, h - 0.1, 0]}
+        size={[0.1, 0.055, 0.1]}
+        color="#a09276"
+      />
       <group
         position={[0, h, 0]}
         rotation={[
@@ -679,6 +898,11 @@ function Light({ item }: { item: SceneItem }) {
         ]}
       >
         <Box position={[0, 0, 0]} size={[0.42, 0.36, 0.3]} color="#303739" />
+        <Box
+          position={[0, 0.22, 0.02]}
+          size={[0.21, 0.05, 0.13]}
+          color="#686f6a"
+        />
         {fixture === "softbox" ? (
           <>
             <Box
@@ -697,6 +921,14 @@ function Light({ item }: { item: SceneItem }) {
                 key={side}
                 position={[(side * (sourceSize + 0.12)) / 2, 0, -0.31]}
                 size={[0.03, sourceSize * 0.8 + 0.09, 0.25]}
+                color="#252a2a"
+              />
+            ))}
+            {[-1, 1].map((side) => (
+              <Box
+                key={`light-rim-${side}`}
+                position={[0, (side * (sourceSize * 0.8 + 0.1)) / 2, -0.31]}
+                size={[sourceSize + 0.15, 0.025, 0.24]}
                 color="#252a2a"
               />
             ))}
@@ -798,10 +1030,10 @@ export default function SetPiece({
     case "rug":
       return (
         <group>
-          <Box
+          <Cushion
             position={[0, 0.012, 0]}
             size={[item.width, 0.025, item.depth]}
-            color="#786c5c"
+            color={item.color ?? "#786c5c"}
           />
           <Box
             position={[0, 0.03, 0]}
@@ -813,6 +1045,20 @@ export default function SetPiece({
             size={[item.width - 0.34, 0.007, item.depth - 0.34]}
             color="#8b806d"
           />
+          {[-1, 1].map((end) =>
+            Array.from({ length: 16 }, (_, index) => (
+              <Box
+                key={`${end}-${index}`}
+                position={[
+                  -item.width / 2 + ((index + 0.5) * item.width) / 16,
+                  0.018,
+                  end * (item.depth / 2 + 0.055),
+                ]}
+                size={[0.018, 0.008, 0.11]}
+                color="#c6b28d"
+              />
+            )),
+          )}
         </group>
       );
     case "box":
