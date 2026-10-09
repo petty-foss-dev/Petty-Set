@@ -38,6 +38,7 @@ import {
   Square,
   Trash2,
   Redo2,
+  RotateCw,
   Ruler,
   Sofa,
   BookOpen,
@@ -286,6 +287,9 @@ function Editor({
     setPrimaryId(next.at(-1));
   }
   const [mode, setMode] = useState<ViewMode>("stage");
+  const [transformMode, setTransformMode] = useState<"translate" | "rotate">(
+    "translate",
+  );
   const [lightTraceVisible, setLightTraceVisible] = useState(false);
   const [stillWidth, setStillWidth] = useState(1920);
   const [lightSample, setLightSample] = useState<{
@@ -2779,12 +2783,36 @@ function Editor({
                 <Lightbulb size={15} /> Light trace
               </button>
               <button
-                className={tool === "select" ? "active" : ""}
+                className={
+                  tool === "select" && transformMode === "translate"
+                    ? "active"
+                    : ""
+                }
                 aria-label="Select tool"
                 title="Select and move"
-                onClick={() => setTool("select")}
+                onClick={() => {
+                  setTool("select");
+                  setTransformMode("translate");
+                  setPoseMode(false);
+                }}
               >
                 <MousePointer2 size={15} />
+              </button>
+              <button
+                className={
+                  tool === "select" && transformMode === "rotate"
+                    ? "active"
+                    : ""
+                }
+                aria-label="Rotate selected object"
+                title="Rotate selected object around its vertical axis"
+                onClick={() => {
+                  setTool("select");
+                  setTransformMode("rotate");
+                  setPoseMode(false);
+                }}
+              >
+                <RotateCw size={15} />
               </button>
               <button
                 className={tool === "wall" ? "active" : ""}
@@ -2876,6 +2904,7 @@ function Editor({
               selectedId={moveProgress > 0 ? undefined : selectedId}
               selectedIds={moveProgress > 0 ? [] : selectedIds}
               mode={mode}
+              transformMode={transformMode}
               lightTraceVisible={lightTraceVisible}
               lightSample={currentLightSample}
               onLightSample={(point) =>
@@ -2890,6 +2919,7 @@ function Editor({
               }
               onSelect={selectObject}
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
+              onRotate={(value, rotation) => updateItem(value, { rotation })}
               onMoveActorPathPoint={moveActorRoutePoint}
               onMoveCameraPathPoint={moveCameraRoutePoint}
               onPoseJoints={updateActorJoints}
@@ -3002,7 +3032,11 @@ function Editor({
                             ? "Click two points on the imported plan, then enter their known distance"
                             : mode === "camera"
                               ? "Shot preview · select 3D stage to edit"
-                              : "Click an object to select · drag the arrows to move · scroll to zoom"}
+                              : transformMode === "rotate"
+                                ? mode === "plan"
+                                  ? "Drag the orange handle to rotate the selected object"
+                                  : "Drag the rotation ring around the selected object"
+                                : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
             {mode === "plan" && lightTraceVisible && (
               <div

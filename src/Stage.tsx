@@ -200,10 +200,12 @@ interface Props {
   selectedId?: string;
   selectedIds: string[];
   mode: ViewMode;
+  transformMode: "translate" | "rotate";
   tool: "select" | "wall" | "room" | "polygon" | "corner" | "calibrate";
   poseMode: boolean;
   onSelect: (id?: string, extend?: boolean) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
+  onRotate: (id: string, rotation: number) => void;
   onMoveActorPathPoint: (
     id: string,
     index: number,
@@ -402,20 +404,46 @@ function SelectedObject({
   actorJoints,
   poseMode,
   mode,
+  transformMode,
   onSelect,
   onMove,
+  onRotate,
   onPoseJoints,
 }: {
   item: SceneItem;
   actorJoints?: MannequinJoints;
   poseMode: boolean;
   mode: ViewMode;
+  transformMode: "translate" | "rotate";
   onSelect: (id: string, extend?: boolean) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
+  onRotate: (id: string, rotation: number) => void;
   onPoseJoints: (id: string, joints: MannequinJoints) => void;
 }) {
   const group = useRef<THREE.Group>(null);
   const [draftJoints, setDraftJoints] = useState<MannequinJoints>();
+  const [draftRotation, setDraftRotation] = useState<number>();
+  const rotationStart = useRef<
+    { x: number; y: number; moved: boolean } | undefined
+  >(undefined);
+  const handleRadius = Math.max(item.width, item.depth) * 0.6 + 0.5;
+  const angleAt = (event: ThreeEvent<PointerEvent>) => {
+    const point = new THREE.Vector3();
+    if (
+      !event.ray.intersectPlane(
+        new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+        point,
+      )
+    )
+      return item.rotation;
+    return (
+      (THREE.MathUtils.radToDeg(
+        Math.atan2(item.z - point.z, point.x - item.x),
+      ) +
+        360) %
+      360
+    );
+  };
   if (poseMode && item.kind === "actor") {
     return (
       <group
@@ -435,42 +463,122 @@ function SelectedObject({
       </group>
     );
   }
-  return (
-    <TransformControls
-      mode="translate"
-      showY={mode !== "plan"}
-      onMouseUp={() => {
-        const position = group.current?.position;
-        if (position) onMove(item.id, position.x, position.y, position.z);
+  const body = (
+    <group
+      ref={group}
+      position={[item.x, item.y, item.z]}
+      rotation={[0, ((draftRotation ?? item.rotation) * Math.PI) / 180, 0]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onSelect(item.id, event.nativeEvent.shiftKey);
       }}
     >
-      <group
-        ref={group}
-        position={[item.x, item.y, item.z]}
-        rotation={[0, (item.rotation * Math.PI) / 180, 0]}
-        onPointerDown={(event) => {
-          event.stopPropagation();
-          onSelect(item.id, event.nativeEvent.shiftKey);
-        }}
+      <SetPiece item={item} actorJoints={actorJoints} />
+      <mesh
+        position={[0, Math.max(0.3, item.height / 2), 0]}
+        raycast={() => null}
       >
-        <SetPiece item={item} actorJoints={actorJoints} />
-        <mesh position={[0, Math.max(0.3, item.height / 2), 0]}>
-          <boxGeometry
-            args={[
-              Math.max(0.4, item.width + 0.12),
-              Math.max(0.5, item.height + 0.12),
-              Math.max(0.4, item.depth + 0.12),
+        <boxGeometry
+          args={[
+            Math.max(0.4, item.width + 0.12),
+            Math.max(0.5, item.height + 0.12),
+            Math.max(0.4, item.depth + 0.12),
+          ]}
+        />
+        <meshBasicMaterial
+          color="#f59b42"
+          wireframe
+          transparent
+          opacity={0.7}
+          depthTest={false}
+        />
+      </mesh>
+      {transformMode === "rotate" && mode === "plan" && (
+        <group>
+          <Line
+            points={[
+              [0, 0.18, 0],
+              [handleRadius, 0.18, 0],
             ]}
+            color="#d66f32"
+            lineWidth={2}
+            raycast={() => null}
           />
-          <meshBasicMaterial
-            color="#f59b42"
-            wireframe
-            transparent
-            opacity={0.7}
-            depthTest={false}
-          />
-        </mesh>
-      </group>
+          <mesh
+            position={[handleRadius, 0.18, 0]}
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              (event.target as Element).setPointerCapture(event.pointerId);
+              rotationStart.current = {
+                x: event.clientX,
+                y: event.clientY,
+                moved: false,
+              };
+            }}
+            onPointerMove={(event) => {
+              if (!rotationStart.current) return;
+              event.stopPropagation();
+              if (
+                Math.hypot(
+                  event.clientX - rotationStart.current.x,
+                  event.clientY - rotationStart.current.y,
+                ) > 4
+              ) {
+                rotationStart.current.moved = true;
+                setDraftRotation(angleAt(event));
+              }
+            }}
+            onPointerUp={(event) => {
+              if (!rotationStart.current) return;
+              event.stopPropagation();
+              (event.target as Element).releasePointerCapture(event.pointerId);
+              if (rotationStart.current.moved)
+                onRotate(item.id, Number(angleAt(event).toFixed(1)));
+              rotationStart.current = undefined;
+              setDraftRotation(undefined);
+            }}
+            onPointerCancel={() => {
+              rotationStart.current = undefined;
+              setDraftRotation(undefined);
+            }}
+          >
+            <sphereGeometry args={[0.19, 16, 12]} />
+            <meshBasicMaterial color="#e47e39" depthTest={false} />
+          </mesh>
+        </group>
+      )}
+    </group>
+  );
+  if (transformMode === "rotate" && mode === "plan") return body;
+  return (
+    <TransformControls
+      mode={transformMode}
+      showX={transformMode === "translate"}
+      showY={transformMode === "rotate" || mode !== "plan"}
+      showZ={transformMode === "translate"}
+      onMouseUp={() => {
+        const object = group.current;
+        if (!object) return;
+        if (transformMode === "rotate") {
+          const rotation =
+            ((THREE.MathUtils.radToDeg(object.rotation.y) % 360) + 360) % 360;
+          if (Math.abs(rotation - item.rotation) > 0.05)
+            onRotate(item.id, Number(rotation.toFixed(1)));
+        } else if (
+          object.position.distanceTo(
+            new THREE.Vector3(item.x, item.y, item.z),
+          ) > 0.001
+        ) {
+          onMove(
+            item.id,
+            object.position.x,
+            object.position.y,
+            object.position.z,
+          );
+        }
+      }}
+    >
+      {body}
     </TransformControls>
   );
 }
@@ -794,10 +902,12 @@ function StageContent({
   selectedId,
   selectedIds,
   mode,
+  transformMode,
   tool,
   poseMode,
   onSelect,
   onMove,
+  onRotate,
   onMoveActorPathPoint,
   onMoveCameraPathPoint,
   onPoseJoints,
@@ -1391,8 +1501,10 @@ function StageContent({
               actorJoints={jointsAt(item)}
               poseMode={poseMode}
               mode={mode}
+              transformMode={transformMode}
               onSelect={onSelect}
               onMove={onMove}
+              onRotate={onRotate}
               onPoseJoints={onPoseJoints}
             />
           ) : (
