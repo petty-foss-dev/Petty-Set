@@ -142,6 +142,7 @@ export default function Mannequin({
   useEffect(() => () => map.dispose(), [map]);
   const color = item.color ?? "#d2ab7d";
   const connector = "#745235";
+  const pose = item.mannequinPose ?? "neutral";
   const swing = Math.sin(walkPhase);
   return (
     <group scale={[item.width / 0.5, item.height / 1.75, item.depth / 0.4]}>
@@ -166,6 +167,10 @@ export default function Mannequin({
         color={connector}
       />
       <Piece geometry={chest} position={[0, 1.2, 0]} color={color} map={map} />
+      <mesh position={[0, 1.42, 0]} castShadow>
+        <cylinderGeometry args={[0.075, 0.09, 0.055, 18]} />
+        <meshStandardMaterial color={color} map={map} roughness={0.82} />
+      </mesh>
       <Piece
         geometry={joint}
         position={[0, 1.43, 0]}
@@ -173,11 +178,25 @@ export default function Mannequin({
         color={connector}
       />
       <Piece geometry={head} position={[0, 1.55, 0]} color={color} map={map} />
+      <mesh position={[0, 1.39, 0]} castShadow>
+        <cylinderGeometry args={[0.085, 0.075, 0.035, 18]} />
+        <meshStandardMaterial color={connector} roughness={0.76} />
+      </mesh>
       {[-1, 1].map((side) => (
         <group key={side}>
           <group
             position={[side * 0.255, 1.36, 0]}
-            rotation={[side * swing * 0.22, 0, 0]}
+            rotation={[
+              side * swing * 0.22,
+              0,
+              side === 1
+                ? pose === "greeting"
+                  ? 2.68
+                  : pose === "pointing"
+                    ? 1.42
+                    : 0
+                : 0,
+            ]}
           >
             <group position={[-side * 0.255, -1.36, 0]}>
               <Piece
@@ -186,6 +205,12 @@ export default function Mannequin({
                 scale={[0.085, 0.08, 0.085]}
                 color={color}
                 map={map}
+              />
+              <Piece
+                geometry={joint}
+                position={[side * 0.338, 1.36, 0]}
+                scale={[0.018, 0.028, 0.028]}
+                color={connector}
               />
               <Piece
                 geometry={upperArm}
@@ -200,27 +225,42 @@ export default function Mannequin({
                 scale={[0.055, 0.055, 0.055]}
                 color={connector}
               />
-              <Piece
-                geometry={forearm}
-                position={[side * 0.31, 0.84, 0]}
-                rotation={[0, 0, side * 0.03]}
-                color={color}
-                map={map}
-              />
-              <Piece
-                geometry={joint}
-                position={[side * 0.315, 0.67, 0]}
-                scale={[0.04, 0.045, 0.04]}
-                color={connector}
-              />
-              <Piece
-                geometry={hand}
-                position={[side * 0.32, 0.55, -0.015]}
-                rotation={[0, 0, side * 0.15]}
-                scale={[0.045, 0.105, 0.027]}
-                color={color}
-                map={map}
-              />
+              <group
+                position={[side * 0.3, 1.01, 0]}
+                rotation={[0, 0, side === 1 && pose === "greeting" ? -0.22 : 0]}
+              >
+                <group position={[-side * 0.3, -1.01, 0]}>
+                  <Piece
+                    geometry={forearm}
+                    position={[side * 0.31, 0.84, 0]}
+                    rotation={[0, 0, side * 0.03]}
+                    color={color}
+                    map={map}
+                  />
+                  <Piece
+                    geometry={joint}
+                    position={[side * 0.315, 0.67, 0]}
+                    scale={[0.04, 0.045, 0.04]}
+                    color={connector}
+                  />
+                  <Piece
+                    geometry={hand}
+                    position={[side * 0.32, 0.55, -0.015]}
+                    rotation={[0, 0, side * 0.15]}
+                    scale={[0.045, 0.105, 0.027]}
+                    color={color}
+                    map={map}
+                  />
+                  <Piece
+                    geometry={hand}
+                    position={[side * 0.37, 0.61, 0.025]}
+                    rotation={[0, 0, -side * 0.45]}
+                    scale={[0.025, 0.055, 0.023]}
+                    color={color}
+                    map={map}
+                  />
+                </group>
+              </group>
             </group>
           </group>
           <group
@@ -246,6 +286,21 @@ export default function Mannequin({
                 scale={[0.062, 0.06, 0.062]}
                 color={connector}
               />
+              <Piece
+                geometry={joint}
+                position={[side * 0.174, 0.29, 0]}
+                scale={[0.014, 0.025, 0.025]}
+                color={color}
+                map={map}
+              />
+              <mesh position={[side * 0.11, 0.36, 0]} castShadow>
+                <cylinderGeometry args={[0.068, 0.062, 0.026, 16]} />
+                <meshStandardMaterial
+                  color={color}
+                  map={map}
+                  roughness={0.84}
+                />
+              </mesh>
               <Piece
                 geometry={shin}
                 position={[side * 0.11, 0.2, 0]}

@@ -62,6 +62,9 @@ export interface SceneItem {
   color?: string;
   lightType?: "softbox" | "spot" | "practical";
   facadeStyle?: "storefront" | "brick" | "theater";
+  signText?: string;
+  surfaceStyle?: "plain" | "road" | "sidewalk";
+  mannequinPose?: "neutral" | "greeting" | "pointing";
   assetData?: string;
   roomExtended?: boolean;
   hidden?: boolean;
@@ -253,6 +256,20 @@ export function isProject(value: unknown): value is Project {
             !["storefront", "brick", "theater"].includes(
               item.facadeStyle as string,
             ))) ||
+        (item.signText !== undefined &&
+          (item.kind !== "facade" ||
+            !isString(item.signText) ||
+            item.signText.length > 24)) ||
+        (item.surfaceStyle !== undefined &&
+          (item.kind !== "ground" ||
+            !["plain", "road", "sidewalk"].includes(
+              item.surfaceStyle as string,
+            ))) ||
+        (item.mannequinPose !== undefined &&
+          (item.kind !== "actor" ||
+            !["neutral", "greeting", "pointing"].includes(
+              item.mannequinPose as string,
+            ))) ||
         (item.kind === "asset" &&
           (!isString(item.assetData) ||
             !item.assetData.startsWith(
@@ -367,7 +384,14 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
     case "wall":
       return { ...base, width: 4, height: 2.8, depth: 0.12, x: 0, z: -2 };
     case "actor":
-      return { ...base, width: 0.5, height: 1.75, depth: 0.4, z: -1 };
+      return {
+        ...base,
+        width: 0.5,
+        height: 1.75,
+        depth: 0.4,
+        z: -1,
+        mannequinPose: "neutral",
+      };
     case "camera":
       return {
         ...base,
@@ -413,7 +437,14 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
     case "vehicle":
       return { ...base, width: 4.2, height: 1.6, depth: 1.8 };
     case "ground":
-      return { ...base, width: 2, height: 0.03, depth: 5, color: "#c3bca9" };
+      return {
+        ...base,
+        width: 2,
+        height: 0.03,
+        depth: 5,
+        color: "#c3bca9",
+        surfaceStyle: "plain",
+      };
     case "facade":
       return {
         ...base,
@@ -421,6 +452,7 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
         height: 3.2,
         depth: 0.5,
         facadeStyle: "storefront",
+        signText: "MARKET",
       };
     case "streetlamp":
       return { ...base, width: 0.8, height: 3.5, depth: 0.8 };
@@ -830,6 +862,7 @@ export function backlotScene(): SetScene {
       width: 11.2,
       depth: 12,
       color: "#6f6b61",
+      surfaceStyle: "road",
     },
     {
       ...makeItem("ground", 2),
@@ -839,6 +872,7 @@ export function backlotScene(): SetScene {
       width: 4.4,
       depth: 2,
       color: "#b7a78b",
+      surfaceStyle: "sidewalk",
     },
     {
       ...makeItem("ground", 3),
@@ -848,6 +882,17 @@ export function backlotScene(): SetScene {
       width: 4.4,
       depth: 2,
       color: "#b7a78b",
+      surfaceStyle: "sidewalk",
+    },
+    {
+      ...makeItem("ground", 4),
+      name: "Apartment sidewalk",
+      x: -0.2,
+      z: -3.1,
+      width: 3.2,
+      depth: 2,
+      color: "#b7a78b",
+      surfaceStyle: "sidewalk",
     },
     {
       ...makeItem("facade", 1),
@@ -858,6 +903,7 @@ export function backlotScene(): SetScene {
       height: 3.6,
       facadeStyle: "storefront",
       color: "#c8ab78",
+      signText: "CORNER MARKET",
     },
     {
       ...makeItem("facade", 2),
@@ -868,6 +914,7 @@ export function backlotScene(): SetScene {
       height: 4,
       facadeStyle: "brick",
       color: "#a16d59",
+      signText: "THE STANLEY",
     },
     {
       ...makeItem("facade", 3),
@@ -878,6 +925,7 @@ export function backlotScene(): SetScene {
       height: 3.8,
       facadeStyle: "theater",
       color: "#c1a47e",
+      signText: "THE PICTURE HOUSE",
     },
     {
       ...makeItem("streetlamp", 1),
@@ -914,6 +962,7 @@ export function backlotScene(): SetScene {
       x: 1.5,
       z: -0.6,
       rotation: -25,
+      mannequinPose: "greeting",
     },
     camera,
   ];

@@ -1456,16 +1456,34 @@ function App() {
                   </div>
                 )}
                 {selected.kind === "actor" && (
-                  <label className="full-field">
-                    <span>Wood finish</span>
-                    <input
-                      type="color"
-                      value={selected.color ?? "#d2ab7d"}
-                      onChange={(event) =>
-                        updateItem(selected.id, { color: event.target.value })
-                      }
-                    />
-                  </label>
+                  <>
+                    <label className="full-field">
+                      <span>Pose</span>
+                      <select
+                        value={selected.mannequinPose ?? "neutral"}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            mannequinPose: event.target
+                              .value as SceneItem["mannequinPose"],
+                          })
+                        }
+                      >
+                        <option value="neutral">Neutral</option>
+                        <option value="greeting">Greeting</option>
+                        <option value="pointing">Pointing</option>
+                      </select>
+                    </label>
+                    <label className="full-field">
+                      <span>Wood finish</span>
+                      <input
+                        type="color"
+                        value={selected.color ?? "#d2ab7d"}
+                        onChange={(event) =>
+                          updateItem(selected.id, { color: event.target.value })
+                        }
+                      />
+                    </label>
+                  </>
                 )}
                 {selected.kind === "facade" && (
                   <>
@@ -1495,7 +1513,38 @@ function App() {
                         }
                       />
                     </label>
+                    <label className="full-field">
+                      <span>Sign</span>
+                      <input
+                        type="text"
+                        maxLength={24}
+                        value={selected.signText ?? ""}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            signText: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
                   </>
+                )}
+                {selected.kind === "ground" && (
+                  <label className="full-field">
+                    <span>Surface</span>
+                    <select
+                      value={selected.surfaceStyle ?? "plain"}
+                      onChange={(event) =>
+                        updateItem(selected.id, {
+                          surfaceStyle: event.target
+                            .value as SceneItem["surfaceStyle"],
+                        })
+                      }
+                    >
+                      <option value="plain">Plain</option>
+                      <option value="road">Road markings</option>
+                      <option value="sidewalk">Sidewalk and curb</option>
+                    </select>
+                  </label>
                 )}
                 {selected.kind === "barrel" && (
                   <label className="full-field">

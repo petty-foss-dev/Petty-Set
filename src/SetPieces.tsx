@@ -4,7 +4,7 @@ import * as THREE from "three";
 import type { SceneItem } from "./model";
 import Mannequin from "./Mannequin";
 import { Bench, Tree, Vehicle } from "./OutdoorAssets";
-import { Barrel, Facade, Streetlamp } from "./BacklotAssets";
+import { Barrel, Facade, Streetlamp, Surface } from "./BacklotAssets";
 
 const ImportedAsset = lazy(() => import("./ImportedAsset"));
 
@@ -576,27 +576,7 @@ export default function SetPiece({
     case "barrel":
       return <Barrel item={item} />;
     case "ground":
-      return (
-        <group>
-          <Box
-            position={[0, item.height / 2, 0]}
-            size={[item.width, item.height, item.depth]}
-            color={item.color ?? "#c3bca9"}
-          />
-          {Array.from({ length: Math.floor(item.depth / 0.8) }, (_, index) => (
-            <Box
-              key={index}
-              position={[
-                0,
-                item.height + 0.001,
-                -item.depth / 2 + (index + 1) * 0.8,
-              ]}
-              size={[item.width, 0.002, 0.008]}
-              color="#949990"
-            />
-          ))}
-        </group>
-      );
+      return <Surface item={item} />;
     case "table":
       return <Table item={item} />;
     case "chair":

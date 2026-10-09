@@ -164,6 +164,24 @@ test("backlot preset keeps editable facade styles and actor route valid", () => 
   invalid.scenes[0].items.find((item) => item.kind === "facade").facadeStyle =
     "castle";
   assert.equal(isProject(invalid), false);
+  const invalidSign = structuredClone(project);
+  invalidSign.scenes[0].items.find((item) => item.kind === "facade").signText =
+    "A".repeat(25);
+  assert.equal(isProject(invalidSign), false);
+  const invalidSurface = structuredClone(project);
+  invalidSurface.scenes[0].items.find(
+    (item) => item.kind === "ground",
+  ).surfaceStyle = "water";
+  assert.equal(isProject(invalidSurface), false);
+  assert.equal(
+    scene.items.find((item) => item.name === "Supporting player").mannequinPose,
+    "greeting",
+  );
+  const invalidPose = structuredClone(project);
+  invalidPose.scenes[0].items.find(
+    (item) => item.kind === "actor",
+  ).mannequinPose = "flying";
+  assert.equal(isProject(invalidPose), false);
 });
 
 test("project import rejects asset data without a GLB 2 header", () => {
