@@ -13,31 +13,29 @@ Open the address printed by Vite. Films, model files, reference images, floor-pl
 
 ## Preview
 
-![Measured two-room floor plan with wall dimensions](docs/screenshots/measured-floor-plan.jpg)
+Screenshots from the current development workspace, captured October 9, 2026. Development features shown here may be ahead of the published source.
 
-![Interior partition divides a room into two measured spaces](docs/screenshots/partitioned-floor-plan.jpg)
+### Set editor and full house plan
+
+![Current 3D set editor with a furnished six-room house](docs/screenshots/github-set-workspace.png)
+
+![Measured house floor plan with furnishings, cameras and lighting positions](docs/screenshots/github-house-plan.png)
+
+### Mannequins and lighting
+
+![Adult-proportion articulated mannequins with editable pose animation](docs/screenshots/github-mannequin-posing.png)
+
+![Living-room camera shot with sunlight, an exterior fixture and interior lighting](docs/screenshots/github-lighting-workspace.png)
+
+### Production planning
+
+![Production stripboard with scene assignments and booking warnings](docs/screenshots/github-stripboard.png)
+
+### Screenplay tools on mobile
+
+<img src="docs/screenshots/github-screenplay-mobile.png" alt="Mobile screenplay preview with A4 format controls and an unnumbered title page" width="390">
 
 [Open the editable sample floor plan SVG](docs/examples/furnished-floor-plan.svg)
-
-![Two-room set with cameras, lights, and a power source](docs/screenshots/two-room-set.jpg)
-
-![Camera A 50 mm two-shot](docs/screenshots/camera-a-two-shot.jpg)
-
-![Camera B 35 mm reverse angle](docs/screenshots/camera-b-reverse.jpg)
-
-![Lighting and power plan](docs/screenshots/lighting-power-plan.jpg)
-
-![Furnished rooms with an editable camera route](docs/screenshots/multi-room.jpg)
-
-![Camera view inside the furnished scene](docs/screenshots/furnished-camera.jpg)
-
-![Exterior scene with actor motion preview](docs/screenshots/exterior-motion.jpg)
-
-![Backlot Main Street scene](docs/screenshots/backlot-main-street.png)
-
-![Posable wooden mannequin with joint controls](docs/screenshots/posable-mannequin.jpg)
-
-![Direct 3D joint posing](docs/screenshots/direct-joint-posing.jpg)
 
 ## Current features
 
