@@ -1,6 +1,7 @@
 import { Component, Suspense, lazy } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
+import { wallOpenings } from "./model";
 import type { MannequinJoints, SceneItem } from "./model";
 import Mannequin from "./Mannequin";
 import { Bench, Tree, Vehicle } from "./OutdoorAssets";
@@ -89,13 +90,35 @@ function Rod({
 }
 
 function Wall({ item }: { item: SceneItem }) {
-  const o = item.opening;
   const w = item.width;
   const h = item.height;
   const d = item.depth;
   const plaster = "#c5c3b3";
   const trim = "#e2dac6";
-  if (!o)
+  const openings = wallOpenings(item)
+    .map((opening) => {
+      const width = Math.min(opening.width, w - 0.12);
+      const center = THREE.MathUtils.clamp(
+        opening.offset,
+        -w / 2 + width / 2,
+        w / 2 - width / 2,
+      );
+      const sill =
+        opening.type === "door"
+          ? 0
+          : THREE.MathUtils.clamp(opening.sill, 0, h - 0.1);
+      return {
+        ...opening,
+        width,
+        center,
+        left: center - width / 2,
+        right: center + width / 2,
+        sill,
+        height: Math.min(opening.height, h - sill),
+      };
+    })
+    .sort((a, b) => a.left - b.left);
+  if (!openings.length)
     return (
       <group>
         <Box position={[0, h / 2, 0]} size={[w, h, d]} color={plaster} />
@@ -111,129 +134,125 @@ function Wall({ item }: { item: SceneItem }) {
         />
       </group>
     );
-  const ow = Math.min(o.width, w - 0.12);
-  const cx = THREE.MathUtils.clamp(o.offset, -w / 2 + ow / 2, w / 2 - ow / 2);
-  const left = cx - ow / 2;
-  const right = cx + ow / 2;
-  const sill =
-    o.type === "door" ? 0 : THREE.MathUtils.clamp(o.sill, 0, h - 0.1);
-  const oh = Math.min(o.height, h - sill);
-  const cap = h - sill - oh;
   const frame = 0.075;
+  const solidSpans: { left: number; right: number }[] = [];
+  openings.forEach((opening, index) => {
+    const start = index ? openings[index - 1].right : -w / 2;
+    if (opening.left - start > 0.01)
+      solidSpans.push({ left: start, right: opening.left });
+  });
+  const finalEdge = openings[openings.length - 1].right;
+  if (w / 2 - finalEdge > 0.01)
+    solidSpans.push({ left: finalEdge, right: w / 2 });
   return (
     <group>
-      {left + w / 2 > 0.01 && (
-        <Box
-          position={[(left - w / 2) / 2, h / 2, 0]}
-          size={[left + w / 2, h, d]}
-          color={plaster}
-        />
-      )}
-      {w / 2 - right > 0.01 && (
-        <Box
-          position={[(right + w / 2) / 2, h / 2, 0]}
-          size={[w / 2 - right, h, d]}
-          color={plaster}
-        />
-      )}
-      {sill > 0.01 && (
-        <Box
-          position={[cx, sill / 2, 0]}
-          size={[ow, sill, d]}
-          color={plaster}
-        />
-      )}
-      {cap > 0.01 && (
-        <Box
-          position={[cx, sill + oh + cap / 2, 0]}
-          size={[ow, cap, d]}
-          color={plaster}
-        />
-      )}
-      {[-1, 1].map((side) => (
-        <group key={side} position={[0, 0, side * (d / 2 + 0.018)]}>
+      {solidSpans.map(({ left, right }) => (
+        <group key={`solid-${left}`}>
           <Box
-            position={[left - frame / 2, sill + oh / 2, 0]}
-            size={[frame, oh + frame * 2, 0.035]}
-            color={trim}
+            position={[(left + right) / 2, h / 2, 0]}
+            size={[right - left, h, d]}
+            color={plaster}
           />
-          <Box
-            position={[right + frame / 2, sill + oh / 2, 0]}
-            size={[frame, oh + frame * 2, 0.035]}
-            color={trim}
-          />
-          <Box
-            position={[cx, sill + oh + frame / 2, 0]}
-            size={[ow + frame * 2, frame, 0.035]}
-            color={trim}
-          />
-          {o.type === "window" && (
+          {[-1, 1].map((side) => (
             <Box
-              position={[cx, sill - frame / 2, 0]}
-              size={[ow + frame * 2, frame, 0.08]}
+              key={side}
+              position={[(left + right) / 2, 0.08, side * (d / 2 + 0.018)]}
+              size={[right - left, 0.16, 0.03]}
               color={trim}
             />
-          )}
-          <Box
-            position={[-w / 2 + (left + w / 2) / 2, 0.08, 0]}
-            size={[left + w / 2, 0.16, 0.03]}
-            color={trim}
-          />
-          <Box
-            position={[right + (w / 2 - right) / 2, 0.08, 0]}
-            size={[w / 2 - right, 0.16, 0.03]}
-            color={trim}
-          />
+          ))}
         </group>
       ))}
-      {o.type === "window" && (
-        <group>
-          <Box
-            position={[cx, sill + oh / 2, 0]}
-            size={[ow - 0.08, oh - 0.08, 0.012]}
-            color="#a7c4bd"
-            roughness={0.12}
-          />
-          <Box
-            position={[cx, sill + oh / 2, d / 2 + 0.04]}
-            size={[0.045, oh, 0.045]}
-            color={trim}
-          />
-          <Box
-            position={[cx, sill + oh / 2, -d / 2 - 0.04]}
-            size={[0.045, oh, 0.045]}
-            color={trim}
-          />
-          <Box
-            position={[cx, sill + oh / 2, d / 2 + 0.04]}
-            size={[ow, 0.045, 0.045]}
-            color={trim}
-          />
-          <Box
-            position={[cx, sill + oh / 2, -d / 2 - 0.04]}
-            size={[ow, 0.045, 0.045]}
-            color={trim}
-          />
-        </group>
-      )}
-      {o.type === "door" && ow <= 1.6 && (
-        <group rotation={[0, -0.55, 0]} position={[left, 0, 0]}>
-          <Box
-            position={[ow / 2 - 0.04, oh / 2, 0]}
-            size={[ow - 0.08, oh - 0.06, 0.045]}
-            color="#957960"
-          />
-          <Box
-            position={[ow / 2 - 0.04, oh / 2, 0.028]}
-            size={[ow - 0.28, oh - 0.32, 0.012]}
-            color="#ad8d6e"
-          />
-          <mesh position={[ow - 0.19, oh / 2, 0.065]}>
-            <sphereGeometry args={[0.035, 12, 8]} />
-            <meshStandardMaterial color="#bd9d62" metalness={0.7} />
-          </mesh>
-        </group>
-      )}
+      {openings.map((o) => {
+        const { center: cx, left, right, width: ow, sill, height: oh } = o;
+        const cap = h - sill - oh;
+        return (
+          <group key={`${o.type}-${left}`}>
+            {sill > 0.01 && (
+              <Box
+                position={[cx, sill / 2, 0]}
+                size={[ow, sill, d]}
+                color={plaster}
+              />
+            )}
+            {cap > 0.01 && (
+              <Box
+                position={[cx, sill + oh + cap / 2, 0]}
+                size={[ow, cap, d]}
+                color={plaster}
+              />
+            )}
+            {[-1, 1].map((side) => (
+              <group key={side} position={[0, 0, side * (d / 2 + 0.018)]}>
+                <Box
+                  position={[left - frame / 2, sill + oh / 2, 0]}
+                  size={[frame, oh + frame * 2, 0.035]}
+                  color={trim}
+                />
+                <Box
+                  position={[right + frame / 2, sill + oh / 2, 0]}
+                  size={[frame, oh + frame * 2, 0.035]}
+                  color={trim}
+                />
+                <Box
+                  position={[cx, sill + oh + frame / 2, 0]}
+                  size={[ow + frame * 2, frame, 0.035]}
+                  color={trim}
+                />
+                {o.type === "window" && (
+                  <Box
+                    position={[cx, sill - frame / 2, 0]}
+                    size={[ow + frame * 2, frame, 0.08]}
+                    color={trim}
+                  />
+                )}
+              </group>
+            ))}
+            {o.type === "window" && (
+              <group>
+                <Box
+                  position={[cx, sill + oh / 2, 0]}
+                  size={[ow - 0.08, oh - 0.08, 0.012]}
+                  color="#a7c4bd"
+                  roughness={0.12}
+                />
+                {[1, -1].map((side) => (
+                  <group key={side} position={[0, 0, side * (d / 2 + 0.04)]}>
+                    <Box
+                      position={[cx, sill + oh / 2, 0]}
+                      size={[0.045, oh, 0.045]}
+                      color={trim}
+                    />
+                    <Box
+                      position={[cx, sill + oh / 2, 0]}
+                      size={[ow, 0.045, 0.045]}
+                      color={trim}
+                    />
+                  </group>
+                ))}
+              </group>
+            )}
+            {o.type === "door" && ow <= 1.6 && (
+              <group rotation={[0, -0.55, 0]} position={[left, 0, 0]}>
+                <Box
+                  position={[ow / 2 - 0.04, oh / 2, 0]}
+                  size={[ow - 0.08, oh - 0.06, 0.045]}
+                  color="#957960"
+                />
+                <Box
+                  position={[ow / 2 - 0.04, oh / 2, 0.028]}
+                  size={[ow - 0.28, oh - 0.32, 0.012]}
+                  color="#ad8d6e"
+                />
+                <mesh position={[ow - 0.19, oh / 2, 0.065]}>
+                  <sphereGeometry args={[0.035, 12, 8]} />
+                  <meshStandardMaterial color="#bd9d62" metalness={0.7} />
+                </mesh>
+              </group>
+            )}
+          </group>
+        );
+      })}
     </group>
   );
 }

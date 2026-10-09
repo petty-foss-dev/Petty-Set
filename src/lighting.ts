@@ -1,4 +1,4 @@
-import { wallEndpoints } from "./model.ts";
+import { wallEndpoints, wallOpenings } from "./model.ts";
 import type { SceneItem } from "./model.ts";
 
 export type LightPoint = { x: number; z: number };
@@ -50,8 +50,7 @@ function wallBlocksRay(light: SceneItem, point: LightPoint, wall: SceneItem) {
   const crossingHeight = height * (1 - rayFraction);
   if (crossingHeight < wall.y || crossingHeight > wall.y + wall.height)
     return false;
-  const opening = wall.opening;
-  if (opening) {
+  for (const opening of wallOpenings(wall)) {
     const wallPosition = (wallFraction - 0.5) * wall.width;
     const withinWidth =
       Math.abs(wallPosition - opening.offset) < opening.width / 2;

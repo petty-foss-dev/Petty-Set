@@ -1,4 +1,4 @@
-import { id, wallBetween, wallEndpoints } from "./model.ts";
+import { id, wallBetween, wallEndpoints, wallOpenings } from "./model.ts";
 import type { SceneItem, SetScene } from "./model.ts";
 
 export type PlanPoint = { x: number; z: number };
@@ -116,8 +116,9 @@ export function canSplitWall(wall: SceneItem): boolean {
     wall.roomExtended
   )
     return false;
-  if (!wall.opening) return true;
-  return Math.abs(wall.opening.offset) - wall.opening.width / 2 >= 0.08;
+  return wallOpenings(wall).every(
+    (opening) => Math.abs(opening.offset) - opening.width / 2 >= 0.08,
+  );
 }
 
 export function splitWall(items: SceneItem[], wallId: string): SceneItem[] {
@@ -125,34 +126,8 @@ export function splitWall(items: SceneItem[], wallId: string): SceneItem[] {
   if (!wall || !canSplitWall(wall)) return items;
   const [start, end] = wallEndpoints(wall);
   const middle = { x: (start.x + end.x) / 2, z: (start.z + end.z) / 2 };
-  const left = wallBetween(start, middle, 1);
-  const right = wallBetween(middle, end, 1);
-  const openingOnLeft = wall.opening && wall.opening.offset < 0;
-  const openingOnRight = wall.opening && wall.opening.offset > 0;
-  const first: SceneItem = {
-    ...wall,
-    x: left.x,
-    z: left.z,
-    width: left.width,
-    rotation: left.rotation,
-    opening: openingOnLeft
-      ? { ...wall.opening!, offset: wall.opening!.offset + wall.width / 4 }
-      : undefined,
-  };
-  const second: SceneItem = {
-    ...wall,
-    id: id(),
-    name: `${wall.name} · segment 2`,
-    x: right.x,
-    z: right.z,
-    width: right.width,
-    rotation: right.rotation,
-    opening: openingOnRight
-      ? { ...wall.opening!, offset: wall.opening!.offset - wall.width / 4 }
-      : undefined,
-  };
   return items.flatMap((item) =>
-    item.id === wallId ? [first, second] : [item],
+    item.id === wallId ? splitAt(item, middle) : [item],
   );
 }
 
@@ -178,18 +153,29 @@ function splitAt(wall: SceneItem, point: PlanPoint): SceneItem[] {
   const leftLength = Math.hypot(point.x - start.x, point.z - start.z);
   const rightLength = Math.hypot(end.x - point.x, end.z - point.z);
   if (leftLength < 0.25 || rightLength < 0.25) return [wall];
-  const openingDistance = wall.opening
-    ? wall.width / 2 + wall.opening.offset
-    : undefined;
+  const openings = wallOpenings(wall);
   if (
-    openingDistance !== undefined &&
-    Math.abs(openingDistance - leftLength) < wall.opening!.width / 2 + 0.08
+    openings.some(
+      (opening) =>
+        Math.abs(wall.width / 2 + opening.offset - leftLength) <
+        opening.width / 2 + 0.08,
+    )
   )
     return [wall];
   const first = wallBetween(start, point, 1);
   const second = wallBetween(point, end, 1);
-  const openingOnFirst =
-    openingDistance !== undefined && openingDistance < leftLength;
+  const leftOpenings = openings
+    .filter((opening) => wall.width / 2 + opening.offset < leftLength)
+    .map((opening) => ({
+      ...opening,
+      offset: wall.width / 2 + opening.offset - leftLength / 2,
+    }));
+  const rightOpenings = openings
+    .filter((opening) => wall.width / 2 + opening.offset > leftLength)
+    .map((opening) => ({
+      ...opening,
+      offset: wall.width / 2 + opening.offset - leftLength - rightLength / 2,
+    }));
   return [
     {
       ...wall,
@@ -197,9 +183,9 @@ function splitAt(wall: SceneItem, point: PlanPoint): SceneItem[] {
       z: first.z,
       width: first.width,
       rotation: first.rotation,
-      opening: openingOnFirst
-        ? { ...wall.opening!, offset: openingDistance! - leftLength / 2 }
-        : undefined,
+      opening: leftOpenings[0],
+      additionalOpenings:
+        leftOpenings.length > 1 ? leftOpenings.slice(1) : undefined,
     },
     {
       ...wall,
@@ -209,13 +195,9 @@ function splitAt(wall: SceneItem, point: PlanPoint): SceneItem[] {
       z: second.z,
       width: second.width,
       rotation: second.rotation,
-      opening:
-        openingDistance !== undefined && !openingOnFirst
-          ? {
-              ...wall.opening!,
-              offset: openingDistance - leftLength - rightLength / 2,
-            }
-          : undefined,
+      opening: rightOpenings[0],
+      additionalOpenings:
+        rightOpenings.length > 1 ? rightOpenings.slice(1) : undefined,
     },
   ];
 }
@@ -451,33 +433,38 @@ export function floorplanSVG(scene: SetScene): string {
     const [a, b] = wallEndpoints(wall);
     const line = `<line x1="${x(a.x)}" y1="${y(a.z)}" x2="${x(b.x)}" y2="${y(b.z)}" stroke="#34332f" stroke-width="${Math.max(4, wall.depth * scale).toFixed(1)}" stroke-linecap="square"/>`;
     const midpoint = `<text x="${x(wall.x)}" y="${(Number(y(wall.z)) - 10).toFixed(1)}" text-anchor="middle" fill="#4b4840" font-size="11">${wall.width.toFixed(2)} m</text>`;
-    if (!wall.opening) return line + midpoint;
+    if (!wallOpenings(wall).length) return line + midpoint;
     const direction = {
       x: (b.x - a.x) / wall.width,
       z: (b.z - a.z) / wall.width,
     };
-    const centerDistance = wall.width / 2 + wall.opening.offset;
-    const center = {
-      x: a.x + direction.x * centerDistance,
-      z: a.z + direction.z * centerDistance,
-    };
-    const half = wall.opening.width / 2;
-    const start = {
-      x: center.x - direction.x * half,
-      z: center.z - direction.z * half,
-    };
-    const end = {
-      x: center.x + direction.x * half,
-      z: center.z + direction.z * half,
-    };
-    const gap = `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(end.x)}" y2="${y(end.z)}" stroke="#eee6d8" stroke-width="${Math.max(6, wall.depth * scale + 2).toFixed(1)}"/>`;
-    const mark =
-      wall.opening.type === "window"
-        ? `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(end.x)}" y2="${y(end.z)}" stroke="#5490a3" stroke-width="3"/>`
-        : wall.opening.width > 1.6
-          ? ""
-          : `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(start.x - direction.z * wall.opening.width)}" y2="${y(start.z + direction.x * wall.opening.width)}" stroke="#a97246" stroke-width="2"/>`;
-    return line + gap + mark + midpoint;
+    const openings = wallOpenings(wall)
+      .map((opening) => {
+        const centerDistance = wall.width / 2 + opening.offset;
+        const center = {
+          x: a.x + direction.x * centerDistance,
+          z: a.z + direction.z * centerDistance,
+        };
+        const half = opening.width / 2;
+        const start = {
+          x: center.x - direction.x * half,
+          z: center.z - direction.z * half,
+        };
+        const end = {
+          x: center.x + direction.x * half,
+          z: center.z + direction.z * half,
+        };
+        const gap = `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(end.x)}" y2="${y(end.z)}" stroke="#eee6d8" stroke-width="${Math.max(6, wall.depth * scale + 2).toFixed(1)}"/>`;
+        const mark =
+          opening.type === "window"
+            ? `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(end.x)}" y2="${y(end.z)}" stroke="#5490a3" stroke-width="3"/>`
+            : opening.width > 1.6
+              ? ""
+              : `<line x1="${x(start.x)}" y1="${y(start.z)}" x2="${x(start.x - direction.z * opening.width)}" y2="${y(start.z + direction.x * opening.width)}" stroke="#a97246" stroke-width="2"/>`;
+        return gap + mark;
+      })
+      .join("");
+    return line + openings + midpoint;
   });
   const symbols = scene.items
     .filter(

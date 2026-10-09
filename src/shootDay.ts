@@ -1,6 +1,6 @@
 import type { jsPDF } from "jspdf";
 import { sensors } from "./cinematography.ts";
-import { wallEndpoints } from "./model.ts";
+import { wallEndpoints, wallOpenings } from "./model.ts";
 import type { SceneItem, SetScene, Shot } from "./model.ts";
 import { resolveLightingPlan } from "./lightingPlans.ts";
 import { floorplanSVG } from "./floorplan.ts";
@@ -213,9 +213,9 @@ export function renderShootDaySheet(
     pdf.setDrawColor(...ink);
     pdf.setLineWidth(Math.max(1.1, wall.depth * scale));
     pdf.line(x(start.x), y(start.z), x(end.x), y(end.z));
-    if (wall.opening) {
-      const fraction = 0.5 + wall.opening.offset / wall.width;
-      const half = wall.opening.width / (2 * wall.width);
+    for (const opening of wallOpenings(wall)) {
+      const fraction = 0.5 + opening.offset / wall.width;
+      const half = opening.width / (2 * wall.width);
       const at = (part: number) => ({
         x: start.x + (end.x - start.x) * part,
         z: start.z + (end.z - start.z) * part,
@@ -225,7 +225,7 @@ export function renderShootDaySheet(
       pdf.setDrawColor(255, 253, 248);
       pdf.setLineWidth(Math.max(1.5, wall.depth * scale + 0.5));
       pdf.line(x(a.x), y(a.z), x(b.x), y(b.z));
-      if (wall.opening.type === "window") {
+      if (opening.type === "window") {
         pdf.setDrawColor(79, 139, 156);
         pdf.setLineWidth(0.8);
         pdf.line(x(a.x), y(a.z), x(b.x), y(b.z));

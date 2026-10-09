@@ -13,6 +13,9 @@ import {
   backlotScene,
   mannequinJointsForPose,
   mannequinPoseForJoints,
+  addWallOpening,
+  replaceWallOpening,
+  wallOpenings,
 } from "../src/model.ts";
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
@@ -160,6 +163,40 @@ test("splitting a wall preserves an offset opening and room area", () => {
     canSplitWall({ ...wall, opening: { ...wall.opening, offset: 0 } }),
     false,
   );
+});
+
+test("multiple wall openings survive edits, splits, exports and validation", () => {
+  const wall = wallBetween({ x: 0, z: 0 }, { x: 6, z: 0 }, 1);
+  const first = addWallOpening(wall, "door");
+  const second = addWallOpening(first, "window");
+  assert.equal(wallOpenings(second).length, 2);
+  const movedWindow = replaceWallOpening(second, 1, {
+    ...second.additionalOpenings[0],
+    offset: 1.6,
+  });
+  const spread = replaceWallOpening(movedWindow, 0, {
+    ...second.opening,
+    offset: -1.6,
+  });
+  const split = splitWall([spread], spread.id);
+  assert.equal(split.length, 2);
+  assert.deepEqual(
+    split.flatMap(wallOpenings).map((opening) => opening.type),
+    ["door", "window"],
+  );
+  const project = sampleProject();
+  project.scenes[0].items.push(second);
+  assert.equal(isProject(JSON.parse(JSON.stringify(project))), true);
+  const svg = floorplanSVG(project.scenes[0]);
+  assert.match(svg, /stroke="#5490a3"/);
+  const removed = replaceWallOpening(second, 0);
+  assert.equal(wallOpenings(removed).length, 1);
+  assert.equal(removed.opening.type, "window");
+  const overlap = replaceWallOpening(second, 1, {
+    ...second.additionalOpenings[0],
+    offset: second.opening.offset,
+  });
+  assert.equal(overlap, second);
 });
 
 test("interior partitions split wall intersections into measured rooms", () => {
@@ -516,12 +553,16 @@ test("direct light trace follows falloff, beam aim and wall openings", () => {
   assert.ok(floorIlluminance(practical, { x: 2, z: 0 }, [wall]) > 0);
   wall.opening = {
     type: "window",
-    offset: 0,
+    offset: 0.8,
     width: 1,
     height: 0.5,
     sill: 1.5,
   };
   assert.equal(floorIlluminance(practical, { x: 2, z: 0 }, [wall]), 0);
+  wall.additionalOpenings = [
+    { type: "door", offset: -0.3, width: 0.8, height: 2, sill: 0 },
+  ];
+  assert.ok(floorIlluminance(practical, { x: 2, z: 0 }, [wall]) > 0);
   assert.ok(traceFloor([practical, wall]).values.some((lux) => lux > 0));
 });
 

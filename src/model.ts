@@ -164,6 +164,14 @@ export interface SceneEnvironment {
   sunElevation: number;
 }
 
+export interface WallOpening {
+  type: "door" | "window";
+  offset: number;
+  width: number;
+  height: number;
+  sill: number;
+}
+
 export interface SceneItem {
   id: string;
   kind: ItemKind;
@@ -198,12 +206,88 @@ export interface SceneItem {
   roomExtended?: boolean;
   hidden?: boolean;
   locked?: boolean;
-  opening?: {
-    type: "door" | "window";
-    offset: number;
-    width: number;
-    height: number;
-    sill: number;
+  opening?: WallOpening;
+  additionalOpenings?: WallOpening[];
+}
+
+export function wallOpenings(wall: SceneItem): WallOpening[] {
+  return [
+    ...(wall.opening ? [wall.opening] : []),
+    ...(wall.additionalOpenings ?? []),
+  ];
+}
+
+export function openingFits(
+  wall: SceneItem,
+  candidate: WallOpening,
+  replacing = -1,
+): boolean {
+  if (
+    wall.kind !== "wall" ||
+    !["door", "window"].includes(candidate.type) ||
+    ![
+      candidate.offset,
+      candidate.width,
+      candidate.height,
+      candidate.sill,
+    ].every(Number.isFinite) ||
+    candidate.width < 0.1 ||
+    candidate.height < 0.1
+  )
+    return false;
+  if (Math.abs(candidate.offset) + candidate.width / 2 > wall.width / 2 - 0.05)
+    return false;
+  if (
+    candidate.sill < 0 ||
+    candidate.sill + candidate.height > wall.height - 0.05
+  )
+    return false;
+  return wallOpenings(wall).every(
+    (opening, index) =>
+      index === replacing ||
+      Math.abs(opening.offset - candidate.offset) >=
+        (opening.width + candidate.width) / 2 + 0.1,
+  );
+}
+
+export function addWallOpening(
+  wall: SceneItem,
+  type: WallOpening["type"],
+): SceneItem {
+  const width = Math.min(0.9, wall.width - 0.1);
+  const sill = type === "window" ? 1 : 0;
+  const height = Math.min(
+    type === "window" ? 1 : 2.1,
+    wall.height - sill - 0.05,
+  );
+  const limit = Math.floor((wall.width / 2 - width / 2 - 0.05) * 10);
+  for (let step = 0; step <= limit; step++) {
+    for (const offset of step === 0 ? [0] : [-step / 10, step / 10]) {
+      const opening = { type, offset, width, height, sill };
+      if (!openingFits(wall, opening)) continue;
+      if (!wall.opening) return { ...wall, opening };
+      return {
+        ...wall,
+        additionalOpenings: [...(wall.additionalOpenings ?? []), opening],
+      };
+    }
+  }
+  return wall;
+}
+
+export function replaceWallOpening(
+  wall: SceneItem,
+  index: number,
+  opening?: WallOpening,
+): SceneItem {
+  const openings = wallOpenings(wall);
+  if (index < 0 || index >= openings.length) return wall;
+  if (opening && !openingFits(wall, opening, index)) return wall;
+  openings.splice(index, 1, ...(opening ? [opening] : []));
+  return {
+    ...wall,
+    opening: openings[0],
+    additionalOpenings: openings.length > 1 ? openings.slice(1) : undefined,
   };
 }
 
@@ -275,6 +359,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const isString = (value: unknown): value is string => typeof value === "string";
+const isWallOpening = (value: unknown): value is WallOpening =>
+  isRecord(value) &&
+  ["door", "window"].includes(value.type as string) &&
+  ["offset", "width", "height", "sill"].every((key) =>
+    isFiniteNumber(value[key]),
+  );
 const itemKinds: ItemKind[] = [
   "wall",
   "actor",
@@ -460,17 +550,26 @@ export function isProject(value: unknown): value is Project {
           (item.kind !== "wall" || typeof item.roomExtended !== "boolean"))
       )
         return false;
-      if (item.opening !== undefined) {
-        if (
-          item.kind !== "wall" ||
-          !isRecord(item.opening) ||
-          !["door", "window"].includes(item.opening.type as string) ||
-          !["offset", "width", "height", "sill"].every((key) =>
-            isFiniteNumber((item.opening as Record<string, unknown>)[key]),
-          )
+      if (
+        item.opening !== undefined &&
+        (item.kind !== "wall" || !isWallOpening(item.opening))
+      )
+        return false;
+      if (
+        item.additionalOpenings !== undefined &&
+        (item.kind !== "wall" ||
+          !Array.isArray(item.additionalOpenings) ||
+          !item.additionalOpenings.every(isWallOpening))
+      )
+        return false;
+      if (
+        item.additionalOpenings !== undefined &&
+        wallOpenings(item as unknown as SceneItem).some(
+          (opening, index) =>
+            !openingFits(item as unknown as SceneItem, opening, index),
         )
-          return false;
-      }
+      )
+        return false;
       items.set(item.id, item.kind as ItemKind);
     }
     if (
@@ -826,7 +925,11 @@ export function extendRoom(
   depth = 4,
 ): SceneItem[] {
   const wall = items.find((item) => item.id === wallId && item.kind === "wall");
-  if (!wall || wall.opening?.type === "window" || wall.roomExtended)
+  if (
+    !wall ||
+    wallOpenings(wall).some((opening) => opening.type === "window") ||
+    wall.roomExtended
+  )
     return items;
   const [start, end] = wallEndpoints(wall);
   const yaw = (wall.rotation * Math.PI) / 180;

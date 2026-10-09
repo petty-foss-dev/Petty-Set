@@ -57,6 +57,9 @@ import {
   makeItem,
   wallBetween,
   wallEndpoints,
+  wallOpenings,
+  addWallOpening,
+  replaceWallOpening,
 } from "./model";
 import type {
   ActorPath,
@@ -65,6 +68,7 @@ import type {
   Project,
   SceneEnvironment,
   SceneItem,
+  WallOpening,
   SetScene,
   Shot,
 } from "./model";
@@ -447,6 +451,14 @@ function App() {
           value.id === id ? { ...value, ...patch } : value,
         ),
       };
+    });
+  }
+
+  function applyWallOpenings(wall: SceneItem, updated: SceneItem) {
+    if (updated === wall) return;
+    updateItem(wall.id, {
+      opening: updated.opening,
+      additionalOpenings: updated.additionalOpenings,
     });
   }
 
@@ -2963,12 +2975,13 @@ function App() {
                 )}
                 {selected.kind === "wall" && (
                   <div className="field-section">
-                    <h3>Opening</h3>
+                    <h3>Openings</h3>
                     <button
                       type="button"
                       disabled={
-                        selected.opening?.type === "window" ||
-                        selected.roomExtended
+                        wallOpenings(selected).some(
+                          (opening) => opening.type === "window",
+                        ) || selected.roomExtended
                       }
                       onClick={() =>
                         updateScene((current) => ({
@@ -2983,33 +2996,51 @@ function App() {
                       Adds three walls and a doorway; furnish the new room from
                       the object catalog.
                     </p>
-                    <label className="full-field">
-                      <span>Type</span>
-                      <select
-                        value={selected.opening?.type ?? "none"}
-                        onChange={(event) => {
-                          const type = event.target.value;
-                          updateItem(selected.id, {
-                            opening:
-                              type === "none"
-                                ? undefined
-                                : {
-                                    type: type as "door" | "window",
-                                    offset: 0,
-                                    width: Math.min(1, selected.width - 0.1),
-                                    height: type === "door" ? 2.1 : 1,
-                                    sill: type === "door" ? 0 : 1,
-                                  },
-                          });
-                        }}
-                      >
-                        <option value="none">None</option>
-                        <option value="door">Doorway</option>
-                        <option value="window">Window</option>
-                      </select>
-                    </label>
-                    {selected.opening && (
-                      <>
+                    <div className="field-grid">
+                      {(["door", "window"] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          disabled={addWallOpening(selected, type) === selected}
+                          onClick={() => {
+                            const updated = addWallOpening(selected, type);
+                            applyWallOpenings(selected, updated);
+                          }}
+                        >
+                          <Plus size={15} /> Add{" "}
+                          {type === "door" ? "door" : "window"}
+                        </button>
+                      ))}
+                    </div>
+                    {wallOpenings(selected).map((opening, index) => (
+                      <div key={index} className="field-section">
+                        <label className="full-field">
+                          <span>Opening {index + 1}</span>
+                          <select
+                            value={opening.type}
+                            onChange={(event) => {
+                              const type = event.target
+                                .value as WallOpening["type"];
+                              const updated = replaceWallOpening(
+                                selected,
+                                index,
+                                {
+                                  ...opening,
+                                  type,
+                                  sill: type === "door" ? 0 : 1,
+                                  height:
+                                    type === "door"
+                                      ? Math.min(2.1, selected.height - 0.05)
+                                      : Math.min(1, selected.height - 1.05),
+                                },
+                              );
+                              applyWallOpenings(selected, updated);
+                            }}
+                          >
+                            <option value="door">Doorway</option>
+                            <option value="window">Window</option>
+                          </select>
+                        </label>
                         <div className="field-grid opening-fields">
                           {(["offset", "width", "height"] as const).map(
                             (key) => (
@@ -3019,41 +3050,59 @@ function App() {
                                   type="number"
                                   step="0.1"
                                   min={key === "offset" ? undefined : 0.1}
-                                  value={selected.opening![key]}
-                                  onChange={(event) =>
-                                    updateItem(selected.id, {
-                                      opening: {
-                                        ...selected.opening!,
+                                  value={opening[key]}
+                                  onChange={(event) => {
+                                    const updated = replaceWallOpening(
+                                      selected,
+                                      index,
+                                      {
+                                        ...opening,
                                         [key]: Number(event.target.value),
                                       },
-                                    })
-                                  }
+                                    );
+                                    applyWallOpenings(selected, updated);
+                                  }}
                                 />
                               </label>
                             ),
                           )}
                         </div>
-                        {selected.opening.type === "window" && (
+                        {opening.type === "window" && (
                           <label className="full-field">
                             <span>Sill height</span>
                             <input
                               type="number"
                               min="0"
                               step="0.1"
-                              value={selected.opening.sill}
-                              onChange={(event) =>
-                                updateItem(selected.id, {
-                                  opening: {
-                                    ...selected.opening!,
+                              value={opening.sill}
+                              onChange={(event) => {
+                                const updated = replaceWallOpening(
+                                  selected,
+                                  index,
+                                  {
+                                    ...opening,
                                     sill: Number(event.target.value),
                                   },
-                                })
-                              }
+                                );
+                                applyWallOpenings(selected, updated);
+                              }}
                             />
                           </label>
                         )}
-                      </>
-                    )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = replaceWallOpening(selected, index);
+                            applyWallOpenings(selected, updated);
+                          }}
+                        >
+                          <Trash2 size={15} /> Remove opening
+                        </button>
+                      </div>
+                    ))}
+                    <p className="field-note">
+                      Keep 0.1 m between openings and 0.05 m from wall edges.
+                    </p>
                   </div>
                 )}
                 {selected.kind === "camera" && (
