@@ -354,7 +354,7 @@ export function Barrel({ item }: { item: SceneItem }) {
   const h = item.height,
     r = item.width / 2;
   return (
-    <group>
+    <group scale={[1, 1, item.depth / item.width]}>
       <mesh position={[0, h / 2, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[r * 0.86, r * 0.86, h, 12]} />
         <meshStandardMaterial color={item.color ?? "#98663f"} roughness={0.9} />

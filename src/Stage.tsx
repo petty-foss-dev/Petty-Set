@@ -159,11 +159,13 @@ function PlanLabel({
   x,
   z,
   color = "#342f29",
+  large = false,
 }: {
   text: string;
   x: number;
   z: number;
   color?: string;
+  large?: boolean;
 }) {
   const texture = useMemo(() => {
     const canvas = document.createElement("canvas");
@@ -188,9 +190,83 @@ function PlanLabel({
       rotation={[-Math.PI / 2, 0, 0]}
       raycast={() => null}
     >
-      <planeGeometry args={[Math.max(0.75, text.length * 0.115), 0.28]} />
+      <planeGeometry
+        args={[
+          Math.max(large ? 1.05 : 0.75, text.length * (large ? 0.155 : 0.115)),
+          large ? 0.4 : 0.28,
+        ]}
+      />
       <meshBasicMaterial map={texture} transparent depthTest={false} />
     </mesh>
+  );
+}
+
+function PlanDimensions({ item }: { item: SceneItem }) {
+  const x = item.width / 2;
+  const z = item.depth / 2;
+  const offset = 0.28;
+  return (
+    <group
+      position={[item.x, 0, item.z]}
+      rotation={[0, (item.rotation * Math.PI) / 180, 0]}
+    >
+      <Line
+        points={[
+          [-x, 0.19, z + offset],
+          [x, 0.19, z + offset],
+        ]}
+        color="#bb642f"
+        lineWidth={2}
+        raycast={() => null}
+      />
+      <Line
+        points={[
+          [x + offset, 0.19, -z],
+          [x + offset, 0.19, z],
+        ]}
+        color="#bb642f"
+        lineWidth={2}
+        raycast={() => null}
+      />
+      {[-x, x].map((end) => (
+        <Line
+          key={`width-${end}`}
+          points={[
+            [end, 0.19, z + offset - 0.08],
+            [end, 0.19, z + offset + 0.08],
+          ]}
+          color="#bb642f"
+          lineWidth={2}
+          raycast={() => null}
+        />
+      ))}
+      {[-z, z].map((end) => (
+        <Line
+          key={`depth-${end}`}
+          points={[
+            [x + offset - 0.08, 0.19, end],
+            [x + offset + 0.08, 0.19, end],
+          ]}
+          color="#bb642f"
+          lineWidth={2}
+          raycast={() => null}
+        />
+      ))}
+      <PlanLabel
+        text={`${item.width.toFixed(2)} m`}
+        x={0}
+        z={z + offset + 0.26}
+        color="#71391c"
+        large
+      />
+      <PlanLabel
+        text={`${item.depth.toFixed(2)} m`}
+        x={x + offset + 0.65}
+        z={0}
+        color="#71391c"
+        large
+      />
+    </group>
   );
 }
 
@@ -1432,6 +1508,17 @@ function StageContent({
               x={wall.x}
               z={wall.z}
             />
+          ))}
+      {mode === "plan" &&
+        visualItems
+          .filter(
+            (item) =>
+              selectedIds.includes(item.id) &&
+              item.kind !== "wall" &&
+              !item.hidden,
+          )
+          .map((item) => (
+            <PlanDimensions key={`dimensions-${item.id}`} item={item} />
           ))}
       {mode === "plan" &&
         calibrationPoints.map((point, index) => (

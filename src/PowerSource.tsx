@@ -2,7 +2,7 @@ import type { SceneItem } from "./model";
 
 export default function PowerSource({ item }: { item: SceneItem }) {
   return (
-    <group scale={[item.width / 0.48, item.height / 0.55, item.depth / 0.32]}>
+    <group scale={[item.width / 0.52, item.height / 0.585, item.depth / 0.38]}>
       <mesh position={[0, 0.03, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.52, 0.06, 0.38]} />
         <meshStandardMaterial color="#292c2a" roughness={0.85} />

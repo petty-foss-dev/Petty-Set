@@ -437,10 +437,10 @@ function Table({ item }: { item: SceneItem }) {
 function Chair({ item }: { item: SceneItem }) {
   const w = item.width,
     d = item.depth,
-    h = item.height;
+    h = 0.9;
   const finish = item.color ?? wood;
   return (
-    <group>
+    <group scale={[1, item.height / 0.945, 1]}>
       <Box position={[0, 0.43, 0]} size={[w, 0.095, d]} color={finish} />
       <Cushion
         position={[0, 0.51, 0.02]}
@@ -500,7 +500,7 @@ function Sofa({ item }: { item: SceneItem }) {
     d = item.depth;
   const upholstery = item.color ?? linen;
   return (
-    <group>
+    <group scale={[1, item.height / 0.85, 1]}>
       <Box position={[0, 0.26, 0]} size={[w, 0.29, d]} color="#625c52" />
       <Cushion
         position={[0, 0.65, -d / 2 + 0.11]}
@@ -576,18 +576,14 @@ function Shelf({ item }: { item: SceneItem }) {
             color={finish}
           />
         ))}
-      <Box
-        position={[0, h - 0.035, 0]}
-        size={[w + 0.08, 0.07, d + 0.07]}
-        color={finish}
-      />
+      <Box position={[0, h - 0.035, 0]} size={[w, 0.07, d]} color={finish} />
       <Box
         position={[0, 0.055, d / 2 - 0.025]}
-        size={[w + 0.04, 0.11, 0.05]}
+        size={[w, 0.11, 0.05]}
         color={darkWood}
       />
       {[0.48, 0.9, 1.32]
-        .filter((y) => y < h)
+        .filter((y) => y + 0.38 < h - 0.04)
         .map((y, row) =>
           Array.from({ length: 9 }, (_, i) => {
             const x = -w / 2 + 0.2 + (i * (w - 0.3)) / 9;
@@ -649,9 +645,9 @@ function Leaf({
 }
 
 function Plant({ item }: { item: SceneItem }) {
-  const h = item.height;
+  const h = 1.6;
   return (
-    <group>
+    <group scale={[item.width / 1.42, item.height / 1.65, item.depth / 1.42]}>
       <mesh position={[0, 0.23, 0]} castShadow>
         <cylinderGeometry args={[0.19, 0.13, 0.46, 12]} />
         <meshStandardMaterial color="#9c8065" roughness={0.9} />
@@ -1029,7 +1025,7 @@ export default function SetPiece({
       );
     case "rug":
       return (
-        <group>
+        <group scale={[1, item.height / 0.04, 1]}>
           <Cushion
             position={[0, 0.012, 0]}
             size={[item.width, 0.025, item.depth]}
@@ -1052,7 +1048,7 @@ export default function SetPiece({
                 position={[
                   -item.width / 2 + ((index + 0.5) * item.width) / 16,
                   0.018,
-                  end * (item.depth / 2 + 0.055),
+                  end * (item.depth / 2 - 0.055),
                 ]}
                 size={[0.018, 0.008, 0.11]}
                 color="#c6b28d"

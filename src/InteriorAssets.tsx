@@ -161,13 +161,9 @@ export function Cabinet({ item }: { item: SceneItem }) {
         color={darkWalnut}
       />
       <Block position={[0, base / 2, 0]} size={[w, base, d]} color={wood} />
+      <Block position={[0, h - top / 2, 0]} size={[w, top, d]} color={wood} />
       <Block
-        position={[0, h - top / 2, 0]}
-        size={[w * 1.05, top, d * 1.05]}
-        color={wood}
-      />
-      <Block
-        position={[0, h - top - 0.028, d * 0.51]}
+        position={[0, h - top - 0.028, d * 0.46]}
         size={[w, 0.035, 0.035]}
         color={brass}
         metalness={0.6}
@@ -177,22 +173,22 @@ export function Cabinet({ item }: { item: SceneItem }) {
         return (
           <group key={side}>
             <Block
-              position={[x, (base + doorTop) / 2, d * 0.475]}
+              position={[x, (base + doorTop) / 2, d * 0.45]}
               size={[w * 0.48, Math.max(0.02, doorHeight - 0.03), 0.045]}
               color={wood}
             />
             <Block
-              position={[x, (base + doorTop) / 2, d * 0.503]}
+              position={[x, (base + doorTop) / 2, d * 0.48]}
               size={[w * 0.37, Math.max(0.02, doorHeight - 0.16), 0.014]}
               color="#8b6b4d"
             />
             <Block
-              position={[x, (base + doorTop) / 2, d * 0.513]}
+              position={[x, (base + doorTop) / 2, d * 0.49]}
               size={[w * 0.31, Math.max(0.01, doorHeight - 0.22), 0.008]}
               color={wood}
             />
             <Pin
-              position={[side * w * 0.075, (base + doorTop) / 2, d * 0.55]}
+              position={[side * w * 0.075, (base + doorTop) / 2, d * 0.45]}
               radius={0.02}
               height={0.04}
               color={brass}
@@ -204,7 +200,7 @@ export function Cabinet({ item }: { item: SceneItem }) {
                 position={[
                   side * w * 0.47,
                   base + (doorTop - base) * fraction,
-                  d * 0.51,
+                  d * 0.45,
                 ]}
                 size={[0.025, 0.07, 0.03]}
                 color={brass}
@@ -217,7 +213,7 @@ export function Cabinet({ item }: { item: SceneItem }) {
       {h > 1 && (
         <group>
           <Block
-            position={[0, doorTop + (h - top - doorTop) / 2, d * 0.49]}
+            position={[0, doorTop + (h - top - doorTop) / 2, d * 0.45]}
             size={[w * 0.94, h - top - doorTop - 0.025, 0.05]}
             color={wood}
           />
@@ -227,7 +223,7 @@ export function Cabinet({ item }: { item: SceneItem }) {
               position={[
                 side * w * 0.13,
                 doorTop + (h - top - doorTop) / 2,
-                d * 0.54,
+                d * 0.45,
               ]}
               radius={0.013}
               height={0.05}
@@ -243,7 +239,7 @@ export function Cabinet({ item }: { item: SceneItem }) {
 
 export function DeskLamp({ item }: { item: SceneItem }) {
   const scale: [number, number, number] = [
-    item.width / 0.45,
+    item.width / 0.55,
     item.height / 0.65,
     item.depth / 0.45,
   ];

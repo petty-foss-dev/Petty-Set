@@ -371,6 +371,13 @@ function Editor({
     "saved",
   );
   const [showFloorplanControls, setShowFloorplanControls] = useState(false);
+  const [showMeasuredRoom, setShowMeasuredRoom] = useState(false);
+  const [measuredRoom, setMeasuredRoom] = useState({
+    x: 0,
+    z: 0,
+    width: 4,
+    depth: 5,
+  });
   const [mobilePanel, setMobilePanel] = useState<"left" | "right" | null>(null);
   const [moveProgress, setMoveProgress] = useState(0);
   const [playingMove, setPlayingMove] = useState(false);
@@ -3192,12 +3199,16 @@ function Editor({
           </div>
           <div className="plan-summary">
             <h3>Floor plan</h3>
+            <p className="plan-scale-note">
+              All dimensions in meters · grid squares are 1 m · room area uses
+              wall centerlines
+            </p>
             <div>
               <span>Enclosed rooms</span>
               <strong>{planRoomList.length}</strong>
             </div>
             <div>
-              <span>Usable floor area</span>
+              <span>Enclosed plan area</span>
               <strong>
                 {planRoomList
                   .reduce((sum, room) => sum + room.area, 0)
@@ -3215,6 +3226,69 @@ function Editor({
                 m
               </strong>
             </div>
+            <button
+              className="measured-room-toggle"
+              type="button"
+              aria-expanded={showMeasuredRoom}
+              onClick={() => setShowMeasuredRoom((open) => !open)}
+            >
+              <Ruler size={15} /> Room by measurements
+            </button>
+            {showMeasuredRoom && (
+              <form
+                className="measured-room-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (
+                    measuredRoom.width < 0.5 ||
+                    measuredRoom.depth < 0.5 ||
+                    !Object.values(measuredRoom).every(Number.isFinite)
+                  )
+                    return;
+                  addRoom(
+                    { x: measuredRoom.x, z: measuredRoom.z },
+                    {
+                      x: measuredRoom.x + measuredRoom.width,
+                      z: measuredRoom.z + measuredRoom.depth,
+                    },
+                  );
+                  setMode("plan");
+                  setTool("select");
+                  setShowMeasuredRoom(false);
+                }}
+              >
+                <p>
+                  Enter wall centerline measurements. New walls are 12 cm thick.
+                </p>
+                <div className="measured-room-fields">
+                  {(["x", "z", "width", "depth"] as const).map((key) => (
+                    <label key={key}>
+                      <span>
+                        {key === "x" || key === "z"
+                          ? `${key.toUpperCase()} origin (m)`
+                          : `${key} (m)`}
+                      </span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={
+                          key === "width" || key === "depth" ? 0.5 : undefined
+                        }
+                        required
+                        value={measuredRoom[key]}
+                        onChange={(event) =>
+                          setMeasuredRoom((current) => ({
+                            ...current,
+                            [key]: Number(event.target.value),
+                          }))
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <button type="submit">Build room</button>
+              </form>
+            )}
             {planRoomList.length > 0 && (
               <section
                 className="room-finishes"
@@ -4769,7 +4843,7 @@ function Editor({
                   </label>
                 </div>
                 <div className="field-section">
-                  <h3>Dimensions</h3>
+                  <h3>Dimensions · meters</h3>
                   <div className="field-grid">
                     {(["width", "height", "depth"] as const).map((key) => (
                       <label key={key}>
@@ -4777,7 +4851,7 @@ function Editor({
                         <input
                           type="number"
                           min="0.1"
-                          step="0.1"
+                          step="0.01"
                           value={selected[key]}
                           onChange={(event) =>
                             updateItem(selected.id, {
