@@ -3,7 +3,7 @@ import type { ScriptScene } from "./model.ts";
 export type FountainScene = Pick<
   ScriptScene,
   "sceneNumber" | "title" | "intExt" | "timeOfDay" | "synopsis"
->;
+> & { explicitNumber: boolean };
 
 const headingPattern =
   /^(INT\.\/EXT|INT\/EXT|EXT\/INT|INT|EXT|EST|I\/E)(?:\.|\s)\s*(.+)$/i;
@@ -60,6 +60,7 @@ export function parseFountainScenes(source: string): FountainScene[] {
       scenes.push({
         ...parsed,
         sceneNumber: parsed.sceneNumber ?? String(scenes.length + 1),
+        explicitNumber: !!parsed.sceneNumber,
       });
     } else if (
       scenes.length &&
@@ -71,4 +72,94 @@ export function parseFountainScenes(source: string): FountainScene[] {
     }
   }
   return scenes;
+}
+
+export interface FountainReconciliation {
+  scenes: ScriptScene[];
+  added: number;
+  updated: number;
+  skipped: number;
+  missing: number;
+  reordered: boolean;
+}
+
+const sceneNumberKey = (value: string) => value.trim().toLocaleLowerCase();
+
+export function reconcileFountainScenes(
+  existing: ScriptScene[],
+  incoming: FountainScene[],
+  createId: () => string,
+): FountainReconciliation {
+  const existingByNumber = new Map<string, ScriptScene[]>();
+  const incomingCounts = new Map<string, number>();
+  for (const scene of existing) {
+    const key = sceneNumberKey(scene.sceneNumber);
+    existingByNumber.set(key, [...(existingByNumber.get(key) ?? []), scene]);
+  }
+  for (const scene of incoming) {
+    const key = sceneNumberKey(scene.sceneNumber);
+    incomingCounts.set(key, (incomingCounts.get(key) ?? 0) + 1);
+  }
+
+  const scenes: ScriptScene[] = [];
+  const matched = new Set<string>();
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+  for (const scene of incoming) {
+    const key = sceneNumberKey(scene.sceneNumber);
+    const candidates = existingByNumber.get(key) ?? [];
+    if (incomingCounts.get(key) !== 1 || candidates.length > 1) {
+      skipped++;
+      continue;
+    }
+    const prior = candidates[0];
+    if (prior) {
+      matched.add(prior.id);
+      if (!scene.explicitNumber) {
+        scenes.push(prior);
+        skipped++;
+        continue;
+      }
+      const next = {
+        ...prior,
+        sceneNumber: scene.sceneNumber,
+        title: scene.title,
+        intExt: scene.intExt,
+        timeOfDay: scene.timeOfDay,
+        synopsis: scene.synopsis,
+      };
+      if (
+        next.sceneNumber !== prior.sceneNumber ||
+        next.title !== prior.title ||
+        next.intExt !== prior.intExt ||
+        next.timeOfDay !== prior.timeOfDay ||
+        next.synopsis !== prior.synopsis
+      )
+        updated++;
+      scenes.push(next);
+    } else {
+      scenes.push({
+        id: createId(),
+        sceneNumber: scene.sceneNumber,
+        title: scene.title,
+        intExt: scene.intExt,
+        timeOfDay: scene.timeOfDay,
+        synopsis: scene.synopsis,
+        pageEighths: 0,
+        cast: [],
+        props: [],
+        wardrobe: [],
+        effects: [],
+      });
+      added++;
+    }
+  }
+  const missing = existing.filter((scene) => !matched.has(scene.id)).length;
+  scenes.push(...existing.filter((scene) => !matched.has(scene.id)));
+  const existingIds = new Set(existing.map((scene) => scene.id));
+  const reordered = scenes
+    .filter((scene) => existingIds.has(scene.id))
+    .some((scene, index) => scene.id !== existing[index].id);
+  return { scenes, added, updated, skipped, missing, reordered };
 }

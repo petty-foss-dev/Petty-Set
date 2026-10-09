@@ -132,7 +132,7 @@ import type {
 import { shotListCSV } from "./shotList";
 import { scriptBreakdownCSV } from "./breakdown";
 import { castScheduleConflicts, shootScheduleCSV } from "./schedule";
-import { parseFountainScenes } from "./fountain";
+import { parseFountainScenes, reconcileFountainScenes } from "./fountain";
 import { actorRouteCollisions, cameraRouteCollisions } from "./cameraRoute";
 import {
   fixtureLumens,
@@ -2141,39 +2141,19 @@ function Editor({
       setBreakdownNotice("No Fountain scene headings were found in this file.");
       return;
     }
-    const existingNumbers = new Set(
-      scriptScenes.map((entry) => entry.sceneNumber.trim().toLowerCase()),
-    );
-    const additions: ScriptScene[] = parsed
-      .filter((entry) => {
-        const number = entry.sceneNumber.trim().toLowerCase();
-        if (existingNumbers.has(number)) return false;
-        existingNumbers.add(number);
-        return true;
-      })
-      .map((entry) => ({
-        ...entry,
-        id: id(),
-        pageEighths: 0,
-        cast: [],
-        props: [],
-        wardrobe: [],
-        effects: [],
+    const result = reconcileFountainScenes(scriptScenes, parsed, id);
+    if (result.added || result.updated || result.reordered) {
+      setProject((current) => ({
+        ...current,
+        scriptScenes: result.scenes,
       }));
-    if (!additions.length) {
-      setBreakdownNotice(
-        "All numbered scenes already exist. No breakdown data changed.",
-      );
-      return;
     }
-    setProject((current) => ({
-      ...current,
-      scriptScenes: [...(current.scriptScenes ?? []), ...additions],
-    }));
-    setScriptSceneId(additions[0].id);
+    const priorIds = new Set(scriptScenes.map((entry) => entry.id));
+    const firstAdded = result.scenes.find((entry) => !priorIds.has(entry.id));
+    if (firstAdded) setScriptSceneId(firstAdded.id);
     setShowBreakdown(true);
     setBreakdownNotice(
-      `Added ${additions.length} script ${additions.length === 1 ? "scene" : "scenes"}. Existing scene numbers were kept unchanged.`,
+      `${result.added} added, ${result.updated} updated, ${result.skipped} skipped${result.reordered ? ", order changed" : ""}.${result.missing ? ` ${result.missing} existing ${result.missing === 1 ? "scene was" : "scenes were"} retained outside this import.` : ""} Only explicitly numbered headings update existing scenes.`,
     );
   }
 
@@ -2707,7 +2687,7 @@ function Editor({
                   className="text-button"
                   onClick={() => fountainRef.current?.click()}
                 >
-                  <Upload size={15} /> Import Fountain scenes
+                  <Upload size={15} /> Import Fountain revision
                 </button>
                 {breakdownNotice && (
                   <p className="breakdown-notice" role="status">
