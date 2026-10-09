@@ -197,6 +197,7 @@ interface Props {
   scene: SetScene;
   shot?: Shot;
   routeCollisions: CameraRouteCollision[];
+  actorCollisions: CameraRouteCollision[];
   selectedId?: string;
   selectedIds: string[];
   mode: ViewMode;
@@ -899,6 +900,7 @@ function StageContent({
   scene,
   shot,
   routeCollisions,
+  actorCollisions,
   selectedId,
   selectedIds,
   mode,
@@ -1578,6 +1580,18 @@ function StageContent({
             />
           );
         })}
+      {mode === "plan" &&
+        actorCollisions.map((collision) => (
+          <mesh
+            key={`actor-collision-${collision.wallId}`}
+            position={[collision.x, 0.09, collision.z]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            raycast={() => null}
+          >
+            <ringGeometry args={[0.19, 0.28, 24]} />
+            <meshBasicMaterial color="#d63c35" side={THREE.DoubleSide} />
+          </mesh>
+        ))}
       {mode !== "camera" && cameraItem && shot?.cameraEnd && (
         <CameraRoute
           camera={cameraItem}

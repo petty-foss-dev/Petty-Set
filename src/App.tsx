@@ -123,7 +123,7 @@ import type {
   SensorId,
 } from "./cinematography";
 import { shotListCSV } from "./shotList";
-import { cameraRouteCollisions } from "./cameraRoute";
+import { actorRouteCollisions, cameraRouteCollisions } from "./cameraRoute";
 import {
   fixtureLumens,
   floorIlluminance,
@@ -1885,6 +1885,13 @@ function Editor({
         : [],
     [cameraItem, shot, stageScene.items],
   );
+  const actorCollisions = useMemo(() => {
+    const actor = stageScene.items.find((item) => item.id === selectedId);
+    const path = actor && shot?.actorPaths?.[actor.id];
+    return actor?.kind === "actor" && path
+      ? actorRouteCollisions(actor, path, stageScene.items)
+      : [];
+  }, [selectedId, shot, stageScene.items]);
   const optics = cameraItem
     ? cameraOptics(
         cameraItem.sensor ?? "super35",
@@ -2919,6 +2926,7 @@ function Editor({
               scene={stageScene}
               shot={shot}
               routeCollisions={routeCollisions}
+              actorCollisions={actorCollisions}
               selectedId={moveProgress > 0 ? undefined : selectedId}
               selectedIds={moveProgress > 0 ? [] : selectedIds}
               mode={mode}
@@ -4015,6 +4023,17 @@ function Editor({
                     </label>
                     {shot.actorPaths?.[selected.id] && (
                       <>
+                        {actorCollisions.length > 0 && (
+                          <p className="camera-route-warning" role="status">
+                            Actor path crosses {actorCollisions.length} solid
+                            wall{actorCollisions.length === 1 ? "" : "s"}:{" "}
+                            {actorCollisions
+                              .map((collision) => collision.wallName)
+                              .join(", ")}
+                            . Move a waypoint or add a doorway with enough
+                            clearance.
+                          </p>
+                        )}
                         {shot.actorPaths[selected.id].waypoints.map(
                           (point, index) => (
                             <div className="waypoint-fields" key={index}>
