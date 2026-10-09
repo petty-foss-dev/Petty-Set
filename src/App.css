@@ -148,6 +148,16 @@
   background: #b86d3c;
   color: #fff;
 }
+.camera-route-warning {
+  margin: 8px 0;
+  padding: 9px 10px;
+  border: 1px solid #dfaaa0;
+  border-radius: 6px;
+  background: #fff1ec;
+  color: #934439;
+  font-size: 12px;
+  line-height: 1.4;
+}
 .save-status {
   font-size: 11px;
   color: #929795;

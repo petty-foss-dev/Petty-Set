@@ -120,6 +120,7 @@ import type {
   SensorId,
 } from "./cinematography";
 import { shotListCSV } from "./shotList";
+import { cameraRouteCollisions } from "./cameraRoute";
 import {
   fixtureLumens,
   floorIlluminance,
@@ -1769,6 +1770,13 @@ function Editor({
   }
 
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
+  const routeCollisions = useMemo(
+    () =>
+      cameraItem && shot
+        ? cameraRouteCollisions(cameraItem, shot, stageScene.items)
+        : [],
+    [cameraItem, shot, stageScene.items],
+  );
   const optics = cameraItem
     ? cameraOptics(
         cameraItem.sensor ?? "super35",
@@ -2778,6 +2786,7 @@ function Editor({
             <Stage
               scene={stageScene}
               shot={shot}
+              routeCollisions={routeCollisions}
               selectedId={moveProgress > 0 ? undefined : selectedId}
               selectedIds={moveProgress > 0 ? [] : selectedIds}
               mode={mode}
@@ -4862,6 +4871,16 @@ function Editor({
                 </label>
                 {shot.cameraEnd && (
                   <>
+                    {routeCollisions.length > 0 && (
+                      <p className="camera-route-warning" role="status">
+                        Route crosses {routeCollisions.length} solid wall
+                        {routeCollisions.length === 1 ? "" : "s"}:{" "}
+                        {routeCollisions
+                          .map((collision) => collision.wallName)
+                          .join(", ")}
+                        . Move a waypoint or add an opening.
+                      </p>
+                    )}
                     <label>
                       Path style
                       <select

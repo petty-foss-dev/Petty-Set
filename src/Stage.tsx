@@ -17,6 +17,7 @@ import {
   wallEndpoints,
 } from "./model";
 import { actorActionPose } from "./actorActions";
+import type { CameraRouteCollision } from "./cameraRoute";
 import { planRooms, roomFinishFor } from "./floorplan";
 import type { PlanPoint } from "./floorplan";
 import SetPiece from "./SetPieces";
@@ -195,6 +196,7 @@ function PlanLabel({
 interface Props {
   scene: SetScene;
   shot?: Shot;
+  routeCollisions: CameraRouteCollision[];
   selectedId?: string;
   selectedIds: string[];
   mode: ViewMode;
@@ -602,6 +604,7 @@ function ActorRoute({
 function StageContent({
   scene,
   shot,
+  routeCollisions,
   selectedId,
   selectedIds,
   mode,
@@ -1306,6 +1309,17 @@ function StageContent({
               </mesh>
             ),
           )}
+          {routeCollisions.map((collision) => (
+            <mesh
+              key={collision.wallId}
+              position={[collision.x, 0.075, collision.z]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              raycast={() => null}
+            >
+              <ringGeometry args={[0.15, 0.23, 24]} />
+              <meshBasicMaterial color="#d63c35" side={THREE.DoubleSide} />
+            </mesh>
+          ))}
         </group>
       )}
       {mode !== "camera" && (
