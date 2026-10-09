@@ -1204,6 +1204,29 @@ function Editor({
     updateActorPath(actorId, moveActorPathPoint(path, index, point));
   }
 
+  function moveCameraRoutePoint(
+    index: number,
+    point: { x: number; z: number },
+  ) {
+    if (
+      !cameraItem ||
+      cameraItem.hidden ||
+      cameraItem.locked ||
+      !shot?.cameraEnd
+    )
+      return;
+    if (index === (shot.cameraWaypoints?.length ?? 0)) {
+      updateShot({ cameraEnd: { ...shot.cameraEnd, ...point } });
+    } else {
+      updateShot({
+        cameraWaypoints: shot.cameraWaypoints?.map((mark, markIndex) =>
+          markIndex === index ? { ...mark, ...point } : mark,
+        ),
+      });
+    }
+    resetMove();
+  }
+
   function updateActorJoints(actorId: string, joints?: MannequinJoints) {
     if (shot) {
       const actorJoints = { ...shot.actorJoints };
@@ -2805,6 +2828,7 @@ function Editor({
               onSelect={selectObject}
               onMove={(value, x, y, z) => updateItem(value, { x, y, z })}
               onMoveActorPathPoint={moveActorRoutePoint}
+              onMoveCameraPathPoint={moveCameraRoutePoint}
               onPoseJoints={updateActorJoints}
               onAddWall={addWall}
               onAddRoom={addRoom}
