@@ -45,18 +45,83 @@ function Box({
   size,
   color,
   roughness = 0.82,
+  texture,
 }: {
   position: [number, number, number];
   size: [number, number, number];
   color: string;
   roughness?: number;
+  texture?: THREE.Texture;
 }) {
   return (
     <mesh position={position} castShadow receiveShadow>
       <boxGeometry args={size} />
-      <meshStandardMaterial color={color} roughness={roughness} />
+      <meshStandardMaterial color={color} roughness={roughness} map={texture} />
     </mesh>
   );
+}
+
+const wallTextures = new Map<string, THREE.CanvasTexture>();
+
+function wallTexture(finish: SceneItem["wallFinish"]) {
+  if (!finish || finish === "plaster") return undefined;
+  const cached = wallTextures.get(finish);
+  if (cached) return cached;
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 128;
+  const context = canvas.getContext("2d")!;
+  if (finish === "brick") {
+    context.fillStyle = "#a69583";
+    context.fillRect(0, 0, 128, 128);
+    for (let row = 0; row < 8; row++) {
+      for (let column = -1; column < 5; column++) {
+        const x = column * 34 + (row % 2) * 17;
+        context.fillStyle = ["#a9654d", "#b97256", "#9e5e49"][
+          (row * 5 + column + 6) % 3
+        ];
+        context.fillRect(x + 1, row * 16 + 1, 32, 14);
+        context.fillStyle = "#ffffff13";
+        context.fillRect(x + 2, row * 16 + 2, 30, 2);
+      }
+    }
+  } else if (finish === "timber") {
+    context.fillStyle = "#765a3e";
+    context.fillRect(0, 0, 128, 128);
+    for (let column = 0; column < 8; column++) {
+      const x = column * 16;
+      context.fillStyle =
+        column % 3 === 0 ? "#a27c53" : column % 2 ? "#94704c" : "#886746";
+      context.fillRect(x + 1, 0, 14, 128);
+      context.fillStyle = "#4f392955";
+      context.fillRect(x + 4, 0, 1, 128);
+      context.fillRect(x + 10, 0, 1, 128);
+    }
+  } else {
+    context.fillStyle = "#a7a7a1";
+    context.fillRect(0, 0, 128, 128);
+    let seed = 51;
+    for (let index = 0; index < 1900; index++) {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const x = seed % 128;
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      const y = seed % 128;
+      context.fillStyle = index % 3 ? "#585a5730" : "#e4e2da48";
+      context.fillRect(x, y, 2, 2);
+    }
+    context.strokeStyle = "#686a642d";
+    for (let line = 1; line < 4; line++) {
+      context.beginPath();
+      context.moveTo(0, line * 32);
+      context.lineTo(128, line * 32);
+      context.stroke();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 2);
+  wallTextures.set(finish, texture);
+  return texture;
 }
 
 function Rod({
@@ -94,6 +159,8 @@ function Wall({ item }: { item: SceneItem }) {
   const h = item.height;
   const d = item.depth;
   const plaster = "#c5c3b3";
+  const surface = wallTexture(item.wallFinish);
+  const wallColor = surface ? "#ffffff" : plaster;
   const trim = "#e2dac6";
   const openings = wallOpenings(item)
     .map((opening) => {
@@ -121,7 +188,12 @@ function Wall({ item }: { item: SceneItem }) {
   if (!openings.length)
     return (
       <group>
-        <Box position={[0, h / 2, 0]} size={[w, h, d]} color={plaster} />
+        <Box
+          position={[0, h / 2, 0]}
+          size={[w, h, d]}
+          color={wallColor}
+          texture={surface}
+        />
         <Box
           position={[0, 0.08, d / 2 + 0.013]}
           size={[w, 0.16, 0.028]}
@@ -151,7 +223,8 @@ function Wall({ item }: { item: SceneItem }) {
           <Box
             position={[(left + right) / 2, h / 2, 0]}
             size={[right - left, h, d]}
-            color={plaster}
+            color={wallColor}
+            texture={surface}
           />
           {[-1, 1].map((side) => (
             <Box
@@ -172,14 +245,16 @@ function Wall({ item }: { item: SceneItem }) {
               <Box
                 position={[cx, sill / 2, 0]}
                 size={[ow, sill, d]}
-                color={plaster}
+                color={wallColor}
+                texture={surface}
               />
             )}
             {cap > 0.01 && (
               <Box
                 position={[cx, sill + oh + cap / 2, 0]}
                 size={[ow, cap, d]}
-                color={plaster}
+                color={wallColor}
+                texture={surface}
               />
             )}
             {[-1, 1].map((side) => (

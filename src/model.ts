@@ -204,6 +204,7 @@ export interface SceneItem {
   mannequinJoints?: MannequinJoints;
   assetData?: string;
   roomExtended?: boolean;
+  wallFinish?: "plaster" | "brick" | "timber" | "concrete";
   hidden?: boolean;
   locked?: boolean;
   opening?: WallOpening;
@@ -547,7 +548,12 @@ export function isProject(value: unknown): value is Project {
             item.assetData.length > 1_500_000)) ||
         (item.kind !== "asset" && item.assetData !== undefined) ||
         (item.roomExtended !== undefined &&
-          (item.kind !== "wall" || typeof item.roomExtended !== "boolean"))
+          (item.kind !== "wall" || typeof item.roomExtended !== "boolean")) ||
+        (item.wallFinish !== undefined &&
+          (item.kind !== "wall" ||
+            !["plaster", "brick", "timber", "concrete"].includes(
+              item.wallFinish as string,
+            )))
       )
         return false;
       if (

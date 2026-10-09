@@ -185,8 +185,11 @@ test("multiple wall openings survive edits, splits, exports and validation", () 
     ["door", "window"],
   );
   const project = sampleProject();
-  project.scenes[0].items.push(second);
+  project.scenes[0].items.push({ ...second, wallFinish: "brick" });
   assert.equal(isProject(JSON.parse(JSON.stringify(project))), true);
+  project.scenes[0].items.at(-1).wallFinish = "polished marble";
+  assert.equal(isProject(project), false);
+  project.scenes[0].items.at(-1).wallFinish = "brick";
   const svg = floorplanSVG(project.scenes[0]);
   assert.match(svg, /stroke="#5490a3"/);
   const removed = replaceWallOpening(second, 0);

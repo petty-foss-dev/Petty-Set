@@ -3219,6 +3219,28 @@ function App() {
                 )}
                 {selected.kind === "wall" && (
                   <div className="field-section">
+                    <h3>Wall finish</h3>
+                    <label className="full-field">
+                      <span>Surface</span>
+                      <select
+                        value={selected.wallFinish ?? "plaster"}
+                        onChange={(event) =>
+                          updateItem(selected.id, {
+                            wallFinish: event.target
+                              .value as SceneItem["wallFinish"],
+                          })
+                        }
+                      >
+                        <option value="plaster">Warm plaster</option>
+                        <option value="brick">Brick</option>
+                        <option value="timber">Timber boards</option>
+                        <option value="concrete">Concrete</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+                {selected.kind === "wall" && (
+                  <div className="field-section">
                     <h3>Openings</h3>
                     <button
                       type="button"
