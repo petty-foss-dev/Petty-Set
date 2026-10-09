@@ -176,6 +176,8 @@ export interface SceneItem {
   height: number;
   depth: number;
   intensity?: number;
+  lumens?: number;
+  tilt?: number;
   spread?: number;
   focalLength?: number;
   cameraBody?: "cinema" | "mirrorless" | "broadcast";
@@ -365,12 +367,22 @@ export function isProject(value: unknown): value is Project {
         [
           "intensity",
           "spread",
+          "lumens",
+          "tilt",
           "focalLength",
           "aperture",
           "focusDistance",
         ].some(
           (key) => item[key] !== undefined && !isFiniteNumber(item[key]),
         ) ||
+        (item.lumens !== undefined &&
+          (item.kind !== "light" ||
+            (item.lumens as number) < 0 ||
+            (item.lumens as number) > 100_000)) ||
+        (item.tilt !== undefined &&
+          (item.kind !== "light" ||
+            (item.tilt as number) < 5 ||
+            (item.tilt as number) > 90)) ||
         ["focalLength", "aperture", "focusDistance"].some(
           (key) => item[key] !== undefined && (item[key] as number) <= 0,
         ) ||
@@ -605,6 +617,7 @@ export function makeItem(kind: ItemKind, count: number): SceneItem {
         depth: 0.45,
         x: 2,
         intensity: 2,
+        tilt: 45,
         spread: 45,
         color: "#fff4df",
         powerWatts: 150,

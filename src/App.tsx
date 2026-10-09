@@ -72,6 +72,7 @@ import { historyReducer, projectHistory } from "./history";
 import { aspectRatios, cameraOptics, sensors } from "./cinematography";
 import type { AspectRatio, SensorId } from "./cinematography";
 import { shotListCSV } from "./shotList";
+import { fixtureLumens, floorIlluminance, lightAimPoint } from "./lighting";
 import { actorActions } from "./actorActions";
 import type { ActorAction } from "./actorActions";
 import {
@@ -172,6 +173,7 @@ function App() {
   );
   const [selectedId, setSelectedId] = useState<string>();
   const [mode, setMode] = useState<ViewMode>("stage");
+  const [lightTraceVisible, setLightTraceVisible] = useState(false);
   const [tool, setTool] = useState<
     "select" | "wall" | "room" | "corner" | "calibrate"
   >("select");
@@ -1601,6 +1603,19 @@ function App() {
             </div>
             <div className="tool-switch">
               <button
+                className={lightTraceVisible && mode === "plan" ? "active" : ""}
+                aria-label="Trace light on floor plan"
+                aria-pressed={lightTraceVisible && mode === "plan"}
+                title="Estimated direct illumination with wall occlusion"
+                onClick={() => {
+                  setMode("plan");
+                  setTool("select");
+                  setLightTraceVisible((value) => !value);
+                }}
+              >
+                <Lightbulb size={15} /> Light trace
+              </button>
+              <button
                 className={tool === "select" ? "active" : ""}
                 aria-label="Select tool"
                 title="Select and move"
@@ -1684,6 +1699,7 @@ function App() {
               shot={shot}
               selectedId={moveProgress > 0 ? undefined : selectedId}
               mode={mode}
+              lightTraceVisible={lightTraceVisible}
               tool={tool}
               poseMode={
                 poseMode &&
@@ -1796,6 +1812,19 @@ function App() {
                           ? "Shot preview · select 3D stage to edit"
                           : "Click an object to select · drag the arrows to move · scroll to zoom"}
             </div>
+            {mode === "plan" && lightTraceVisible && (
+              <div
+                className="light-trace-legend"
+                aria-label="Estimated floor illumination scale"
+              >
+                <strong>DIRECT LIGHT · FLOOR LUX</strong>
+                <div className="light-trace-scale" />
+                <span>
+                  5 lx <b>50</b> <b>200</b> 500+ lx
+                </span>
+                <small>Fixture beams, distance falloff and wall openings</small>
+              </div>
+            )}
             {(mode === "camera" || (mode === "stage" && hasMotion)) && (
               <div className="camera-actions">
                 {shot && hasMotion && (
@@ -2846,39 +2875,81 @@ function App() {
                       </select>
                     </label>
                     <label className="full-field">
-                      <span>Intensity</span>
-                      <input
-                        type="range"
-                        min="0"
-                        max="8"
-                        step=".1"
-                        value={selected.intensity ?? 2}
-                        onChange={(event) =>
-                          updateItem(selected.id, {
-                            intensity: Number(event.target.value),
-                          })
-                        }
-                      />
+                      <span>Light output</span>
+                      <div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100000"
+                          step="100"
+                          value={fixtureLumens(selected)}
+                          onChange={(event) =>
+                            updateItem(selected.id, {
+                              lumens: Math.min(
+                                100000,
+                                Math.max(0, Number(event.target.value)),
+                              ),
+                            })
+                          }
+                        />
+                        <em>lm</em>
+                      </div>
                     </label>
                     {selected.lightType !== "practical" && (
-                      <label className="full-field">
-                        <span>Beam spread</span>
-                        <div>
-                          <input
-                            type="number"
-                            min="5"
-                            max="160"
-                            value={selected.spread ?? 45}
-                            onChange={(event) =>
-                              updateItem(selected.id, {
-                                spread: Number(event.target.value),
-                              })
-                            }
-                          />
-                          <em>°</em>
-                        </div>
-                      </label>
+                      <>
+                        <label className="full-field">
+                          <span>Beam spread</span>
+                          <div>
+                            <input
+                              type="number"
+                              min="5"
+                              max="160"
+                              value={selected.spread ?? 45}
+                              onChange={(event) =>
+                                updateItem(selected.id, {
+                                  spread: Math.min(
+                                    160,
+                                    Math.max(5, Number(event.target.value)),
+                                  ),
+                                })
+                              }
+                            />
+                            <em>°</em>
+                          </div>
+                        </label>
+                        <label className="full-field">
+                          <span>Tilt below horizon</span>
+                          <div>
+                            <input
+                              type="number"
+                              min="5"
+                              max="90"
+                              value={selected.tilt ?? 45}
+                              onChange={(event) =>
+                                updateItem(selected.id, {
+                                  tilt: Math.min(
+                                    90,
+                                    Math.max(5, Number(event.target.value)),
+                                  ),
+                                })
+                              }
+                            />
+                            <em>°</em>
+                          </div>
+                        </label>
+                      </>
                     )}
+                    <p className="field-note">
+                      {Math.round(
+                        floorIlluminance(
+                          selected,
+                          lightAimPoint(selected),
+                          scene.items.filter((item) => item.kind === "wall"),
+                        ),
+                      )}{" "}
+                      lx estimated at the floor aim point · direct light, walls
+                      and openings only.
+                    </p>
                     <label className="full-field">
                       <span>Color</span>
                       <input
@@ -2940,7 +3011,9 @@ function App() {
                       </p>
                     )}
                     <p className="field-note">
-                      Preview lighting is illustrative, not photometric.
+                      Floor lux is estimated from direct fixture light. The 3D
+                      view uses shadow maps; it does not simulate bounced light
+                      or calibrated camera exposure.
                     </p>
                   </div>
                 )}

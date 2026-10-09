@@ -23,6 +23,7 @@ import Mannequin from "./Mannequin";
 import type { MannequinJoints, SceneItem, SetScene, Shot } from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
+import { fixtureLumens, lightDirection, traceFloor } from "./lighting";
 
 export type ViewMode = "stage" | "plan" | "camera";
 
@@ -113,6 +114,104 @@ interface Props {
   onCalibrationPoint: (point: PlanPoint) => void;
   captureRef: React.MutableRefObject<(() => string) | null>;
   moveProgress: number;
+  lightTraceVisible: boolean;
+}
+
+function FixtureLight({ item, mode }: { item: SceneItem; mode: ViewMode }) {
+  const target = useMemo(() => new THREE.Object3D(), []);
+  const lumens = fixtureLumens(item);
+  const position: [number, number, number] = [
+    item.x,
+    item.y + item.height,
+    item.z,
+  ];
+  if (item.lightType === "practical")
+    return (
+      <pointLight
+        position={position}
+        color={item.color ?? "#fff4df"}
+        intensity={lumens / (4 * Math.PI)}
+        decay={2}
+        castShadow={mode !== "plan"}
+        shadow-mapSize={[512, 512]}
+        shadow-bias={-0.0001}
+      />
+    );
+  const halfAngle =
+    (Math.min(80, Math.max(2.5, (item.spread ?? 45) / 2)) * Math.PI) / 180;
+  const direction = lightDirection(item);
+  return (
+    <>
+      <primitive
+        object={target}
+        position={[
+          item.x + direction.x * 4,
+          position[1] + direction.y * 4,
+          item.z + direction.z * 4,
+        ]}
+      />
+      <spotLight
+        position={position}
+        target={target}
+        color={item.color ?? "#fff4df"}
+        intensity={lumens / (2 * Math.PI * (1 - Math.cos(halfAngle)))}
+        angle={halfAngle}
+        penumbra={item.lightType === "softbox" ? 0.4 : 0.16}
+        decay={2}
+        castShadow={mode !== "plan"}
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0001}
+      />
+    </>
+  );
+}
+
+function LightTraceOverlay({ items }: { items: SceneItem[] }) {
+  const trace = useMemo(() => traceFloor(items), [items]);
+  const texture = useMemo(() => {
+    if (!trace) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = trace.width;
+    canvas.height = trace.height;
+    const context = canvas.getContext("2d")!;
+    const image = context.createImageData(trace.width, trace.height);
+    trace.values.forEach((lux, index) => {
+      const strength = Math.min(1, Math.log1p(lux) / Math.log1p(500));
+      const offset = index * 4;
+      image.data[offset] = Math.round(70 + 185 * strength);
+      image.data[offset + 1] = Math.round(155 - 75 * strength);
+      image.data[offset + 2] = Math.round(210 - 170 * strength);
+      image.data[offset + 3] = lux < 5 ? 0 : Math.round(45 + 155 * strength);
+    });
+    context.putImageData(image, 0, 0);
+    const result = new THREE.CanvasTexture(canvas);
+    result.colorSpace = THREE.SRGBColorSpace;
+    result.minFilter = THREE.LinearFilter;
+    result.magFilter = THREE.LinearFilter;
+    return result;
+  }, [trace]);
+  useEffect(() => () => texture?.dispose(), [texture]);
+  if (!trace || !texture) return null;
+  return (
+    <mesh
+      position={[
+        trace.minX + trace.worldWidth / 2,
+        0.029,
+        trace.minZ + trace.worldHeight / 2,
+      ]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      raycast={() => null}
+    >
+      <planeGeometry args={[trace.worldWidth, trace.worldHeight]} />
+      <meshBasicMaterial
+        map={texture}
+        transparent
+        opacity={0.8}
+        depthWrite={false}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
 }
 
 function CameraRig({
@@ -294,6 +393,7 @@ function StageContent({
   calibrationPoints,
   onCalibrationPoint,
   moveProgress,
+  lightTraceVisible,
 }: Omit<Props, "captureRef">) {
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
   const visualItems = scene.items.map((item) => {
@@ -417,62 +517,42 @@ function StageContent({
         cameraWaypoints={shot?.cameraWaypoints}
         moveProgress={moveProgress}
       />
-      <ambientLight intensity={0.35 + daylight * 0.6} />
-      <hemisphereLight args={["#f6f3e9", "#8d9290", 0.4 + daylight * 0.9]} />
+      <ambientLight intensity={0.18 + daylight * 0.3} />
+      <hemisphereLight args={["#f6f3e9", "#8d9290", 0.16 + daylight * 0.45]} />
       <directionalLight
         position={[
           Math.sin(sunAzimuth) * Math.cos(sunElevation) * 15,
           Math.sin(sunElevation) * 15,
           Math.cos(sunAzimuth) * Math.cos(sunElevation) * 15,
         ]}
-        intensity={0.2 + daylight * 1.8}
+        intensity={0.1 + daylight * 1.4}
         castShadow={mode !== "plan"}
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
+        shadow-camera-bottom={-20}
+        shadow-bias={-0.0001}
       />
-      {scene.items
-        .filter((item) => item.kind === "light" && !item.hidden)
-        .map((item) =>
-          item.lightType === "practical" ? (
+      {mode !== "plan" &&
+        scene.items
+          .filter((item) => item.kind === "light" && !item.hidden)
+          .map((item) => (
+            <FixtureLight key={item.id} item={item} mode={mode} />
+          ))}
+      {mode !== "plan" &&
+        scene.items
+          .filter((item) => item.kind === "streetlamp" && !item.hidden)
+          .map((item) => (
             <pointLight
-              key={`light-${item.id}`}
-              position={[item.x, item.height, item.z]}
-              color={item.color ?? "#fff4df"}
-              intensity={item.intensity ?? 2}
-              distance={6}
+              key={`streetlamp-${item.id}`}
+              position={[item.x, item.y + item.height * 0.91, item.z]}
+              color="#ffd494"
+              intensity={1.2}
+              distance={5}
               decay={2}
             />
-          ) : (
-            <spotLight
-              key={`light-${item.id}`}
-              position={[item.x, item.height, item.z]}
-              target-position={[
-                item.x - Math.sin((item.rotation * Math.PI) / 180) * 2,
-                1,
-                item.z - Math.cos((item.rotation * Math.PI) / 180) * 2,
-              ]}
-              color={item.color ?? "#fff4df"}
-              intensity={item.intensity ?? 2}
-              angle={
-                ((item.spread ?? (item.lightType === "spot" ? 30 : 75)) *
-                  Math.PI) /
-                360
-              }
-              distance={8}
-            />
-          ),
-        )}
-      {scene.items
-        .filter((item) => item.kind === "streetlamp" && !item.hidden)
-        .map((item) => (
-          <pointLight
-            key={`streetlamp-${item.id}`}
-            position={[item.x, item.y + item.height * 0.91, item.z]}
-            color="#ffd494"
-            intensity={1.2}
-            distance={5}
-            decay={2}
-          />
-        ))}
+          ))}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
@@ -731,6 +811,9 @@ function StageContent({
             />
           </mesh>
         </group>
+      )}
+      {mode === "plan" && lightTraceVisible && (
+        <LightTraceOverlay items={scene.items} />
       )}
       {mode !== "camera" && (
         <Grid

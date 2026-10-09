@@ -18,6 +18,12 @@ import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
 import { actorActionPose } from "../src/actorActions.ts";
 import {
+  fixtureLumens,
+  floorIlluminance,
+  lightAimPoint,
+  traceFloor,
+} from "../src/lighting.ts";
+import {
   floorplanSVG,
   canSplitWall,
   calibratedPlacement,
@@ -428,4 +434,59 @@ test("shot list CSV preserves order and escapes production notes", () => {
   assert.ok(csv.includes('"Living room A","ready"'));
   assert.ok(csv.includes('"Move to ""door"", then hold\nfor cue"'));
   assert.ok(csv.includes('"Super 35","50","2.8","5.5","16:9"'));
+});
+
+test("direct light trace follows falloff, beam aim and wall openings", () => {
+  const light = {
+    ...sampleProject().scenes[0].items.find((item) => item.kind === "light"),
+    x: 0,
+    y: 0,
+    z: 0,
+    height: 2,
+    rotation: 0,
+    tilt: 90,
+    lightType: "spot",
+    spread: 40,
+    lumens: 1000,
+  };
+  const aim = lightAimPoint(light);
+  assert.ok(Math.abs(aim.x) < 1e-8 && Math.abs(aim.z) < 1e-8);
+  assert.ok(floorIlluminance(light, aim, []) > 0);
+  assert.equal(floorIlluminance(light, { x: 4, z: 0 }, []), 0);
+  const practical = { ...light, lightType: "practical" };
+  assert.ok(
+    floorIlluminance(practical, { x: 0, z: 0 }, []) >
+      floorIlluminance(practical, { x: 4, z: 0 }, []) * 10,
+  );
+  const wall = wallBetween({ x: 1, z: -1 }, { x: 1, z: 1 }, 1);
+  practical.x = 0;
+  assert.equal(floorIlluminance(practical, { x: 2, z: 0 }, [wall]), 0);
+  wall.opening = { type: "door", offset: 0, width: 1, height: 2, sill: 0 };
+  assert.ok(floorIlluminance(practical, { x: 2, z: 0 }, [wall]) > 0);
+  wall.opening = {
+    type: "window",
+    offset: 0,
+    width: 1,
+    height: 0.5,
+    sill: 1.5,
+  };
+  assert.equal(floorIlluminance(practical, { x: 2, z: 0 }, [wall]), 0);
+  assert.ok(traceFloor([practical, wall]).values.some((lux) => lux > 0));
+});
+
+test("fixture photometry rejects invalid output and tilt", () => {
+  const project = sampleProject();
+  const light = project.scenes[0].items.find((item) => item.kind === "light");
+  const fill = project.scenes[0].items.find(
+    (item) => item.name === "Fill · softbox",
+  );
+  assert.equal(fixtureLumens(fill), 780);
+  light.lumens = 1800;
+  light.tilt = 65;
+  assert.equal(isProject(project), true);
+  light.lumens = -1;
+  assert.equal(isProject(project), false);
+  light.lumens = 1800;
+  light.tilt = 120;
+  assert.equal(isProject(project), false);
 });

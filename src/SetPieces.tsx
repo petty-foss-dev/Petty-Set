@@ -565,48 +565,57 @@ function Light({ item }: { item: SceneItem }) {
         size={[0.12, 0.1, 0.12]}
         color="#77746b"
       />
-      <Box position={[0, h, 0]} size={[0.42, 0.36, 0.3]} color="#303739" />
-      {fixture === "softbox" ? (
-        <>
-          <Box
-            position={[0, h, -0.22]}
-            size={[0.72, 0.62, 0.1]}
-            color="#242b2d"
-          />
-          <Box
-            position={[0, h, -0.278]}
-            size={[0.59, 0.49, 0.012]}
-            color={item.color ?? "#fff3d6"}
-            roughness={0.3}
-          />
-          {[-1, 1].map((side) => (
+      <group
+        position={[0, h, 0]}
+        rotation={[
+          fixture === "practical" ? 0 : -((item.tilt ?? 45) * Math.PI) / 180,
+          0,
+          0,
+        ]}
+      >
+        <Box position={[0, 0, 0]} size={[0.42, 0.36, 0.3]} color="#303739" />
+        {fixture === "softbox" ? (
+          <>
             <Box
-              key={side}
-              position={[side * 0.36, h, -0.31]}
-              size={[0.03, 0.57, 0.25]}
-              color="#252a2a"
+              position={[0, 0, -0.22]}
+              size={[0.72, 0.62, 0.1]}
+              color="#242b2d"
             />
-          ))}
-        </>
-      ) : fixture === "spot" ? (
-        <mesh
-          position={[0, h, -0.22]}
-          rotation={[Math.PI / 2, 0, 0]}
-          castShadow
-        >
-          <coneGeometry args={[0.25, 0.4, 16]} />
-          <meshStandardMaterial color="#2d3435" />
-        </mesh>
-      ) : (
-        <mesh position={[0, h, -0.1]} castShadow>
-          <sphereGeometry args={[0.18, 16, 12]} />
-          <meshStandardMaterial
-            color={item.color ?? "#fff3d6"}
-            emissive={item.color ?? "#fff3d6"}
-            emissiveIntensity={0.5}
-          />
-        </mesh>
-      )}
+            <Box
+              position={[0, 0, -0.278]}
+              size={[0.59, 0.49, 0.012]}
+              color={item.color ?? "#fff3d6"}
+              roughness={0.3}
+            />
+            {[-1, 1].map((side) => (
+              <Box
+                key={side}
+                position={[side * 0.36, 0, -0.31]}
+                size={[0.03, 0.57, 0.25]}
+                color="#252a2a"
+              />
+            ))}
+          </>
+        ) : fixture === "spot" ? (
+          <mesh
+            position={[0, 0, -0.22]}
+            rotation={[Math.PI / 2, 0, 0]}
+            castShadow
+          >
+            <coneGeometry args={[0.25, 0.4, 16]} />
+            <meshStandardMaterial color="#2d3435" />
+          </mesh>
+        ) : (
+          <mesh position={[0, 0, -0.1]} castShadow>
+            <sphereGeometry args={[0.18, 16, 12]} />
+            <meshStandardMaterial
+              color={item.color ?? "#fff3d6"}
+              emissive={item.color ?? "#fff3d6"}
+              emissiveIntensity={0.5}
+            />
+          </mesh>
+        )}
+      </group>
     </group>
   );
 }
