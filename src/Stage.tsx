@@ -115,6 +115,8 @@ interface Props {
   captureRef: React.MutableRefObject<(() => string) | null>;
   moveProgress: number;
   lightTraceVisible: boolean;
+  lightSample: PlanPoint | null;
+  onLightSample: (point: PlanPoint) => void;
 }
 
 function FixtureLight({ item, mode }: { item: SceneItem; mode: ViewMode }) {
@@ -394,6 +396,8 @@ function StageContent({
   onCalibrationPoint,
   moveProgress,
   lightTraceVisible,
+  lightSample,
+  onLightSample,
 }: Omit<Props, "captureRef">) {
   const cameraItem = scene.items.find((item) => item.id === shot?.cameraId);
   const visualItems = scene.items.map((item) => {
@@ -561,6 +565,12 @@ function StageContent({
           if (tool === "calibrate" && mode === "plan") {
             event.stopPropagation();
             onCalibrationPoint({ x: event.point.x, z: event.point.z });
+            return;
+          }
+          if (mode === "plan" && lightTraceVisible && tool === "select") {
+            event.stopPropagation();
+            onLightSample({ x: event.point.x, z: event.point.z });
+            onSelect(undefined);
             return;
           }
           if ((tool === "wall" || tool === "room") && mode === "plan") {
@@ -814,6 +824,18 @@ function StageContent({
       )}
       {mode === "plan" && lightTraceVisible && (
         <LightTraceOverlay items={scene.items} />
+      )}
+      {mode === "plan" && lightTraceVisible && lightSample && (
+        <group position={[lightSample.x, 0.045, lightSample.z]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+            <ringGeometry args={[0.11, 0.16, 24]} />
+            <meshBasicMaterial color="#352414" depthTest={false} />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+            <circleGeometry args={[0.035, 20]} />
+            <meshBasicMaterial color="#fff8e9" depthTest={false} />
+          </mesh>
+        </group>
       )}
       {mode !== "camera" && (
         <Grid

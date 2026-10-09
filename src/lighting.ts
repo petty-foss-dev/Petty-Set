@@ -97,6 +97,22 @@ export function floorIlluminance(
   return (candela * cosineFloor * falloff) / distanceSquared;
 }
 
+export function sampleFloorIlluminance(items: SceneItem[], point: LightPoint) {
+  const walls = items.filter((item) => item.kind === "wall" && !item.hidden);
+  const contributors = items
+    .filter((item) => item.kind === "light" && !item.hidden)
+    .map((light) => ({
+      id: light.id,
+      name: light.name,
+      lux: floorIlluminance(light, point, walls),
+    }))
+    .sort((a, b) => b.lux - a.lux);
+  return {
+    total: contributors.reduce((sum, light) => sum + light.lux, 0),
+    contributors,
+  };
+}
+
 export function traceFloor(items: SceneItem[], step = 0.25) {
   const lights = items.filter((item) => item.kind === "light" && !item.hidden);
   const walls = items.filter((item) => item.kind === "wall" && !item.hidden);

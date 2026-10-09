@@ -562,14 +562,16 @@
   right: 18px;
   bottom: 18px;
   z-index: 4;
-  width: 210px;
+  width: 232px;
+  max-height: 65%;
+  overflow-y: auto;
   padding: 10px 12px;
   border: 1px solid #beae93;
   border-radius: 7px;
   background: #fff8e9ed;
   color: #514436;
   box-shadow: 0 5px 16px #3a2d1f27;
-  pointer-events: none;
+  pointer-events: auto;
 }
 .light-trace-legend strong {
   font-size: 9px;
@@ -581,7 +583,7 @@
   border-radius: 3px;
   background: linear-gradient(90deg, #469bd2, #93aaa5, #dca268, #ed7648);
 }
-.light-trace-legend span {
+.light-trace-legend > span {
   display: flex;
   justify-content: space-between;
   margin-top: 4px;
@@ -592,6 +594,47 @@
   margin-top: 6px;
   font-size: 9px;
   line-height: 1.3;
+}
+.light-meter {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #d6c9b4;
+}
+.light-meter-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.light-meter-total b {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.light-meter-total span {
+  color: #786d5e;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.light-meter ul {
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.light-meter li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 10px;
+}
+.light-meter li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.light-meter li b {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 .shot-panel-heading {
   display: flex;

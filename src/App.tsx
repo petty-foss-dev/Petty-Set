@@ -72,7 +72,12 @@ import { historyReducer, projectHistory } from "./history";
 import { aspectRatios, cameraOptics, sensors } from "./cinematography";
 import type { AspectRatio, SensorId } from "./cinematography";
 import { shotListCSV } from "./shotList";
-import { fixtureLumens, floorIlluminance, lightAimPoint } from "./lighting";
+import {
+  fixtureLumens,
+  floorIlluminance,
+  lightAimPoint,
+  sampleFloorIlluminance,
+} from "./lighting";
 import { actorActions } from "./actorActions";
 import type { ActorAction } from "./actorActions";
 import {
@@ -174,6 +179,11 @@ function App() {
   const [selectedId, setSelectedId] = useState<string>();
   const [mode, setMode] = useState<ViewMode>("stage");
   const [lightTraceVisible, setLightTraceVisible] = useState(false);
+  const [lightSample, setLightSample] = useState<{
+    sceneId: string;
+    x: number;
+    z: number;
+  } | null>(null);
   const [tool, setTool] = useState<
     "select" | "wall" | "room" | "corner" | "calibrate"
   >("select");
@@ -201,6 +211,11 @@ function App() {
   const moveStartRef = useRef(0);
   const scene =
     project.scenes.find((value) => value.id === sceneId) ?? project.scenes[0];
+  const currentLightSample =
+    lightSample?.sceneId === scene.id ? lightSample : null;
+  const lightReading = currentLightSample
+    ? sampleFloorIlluminance(scene.items, currentLightSample)
+    : null;
   const shot =
     scene.shots.find((value) => value.id === shotId) ?? scene.shots[0];
   const environment: SceneEnvironment = scene.environment ?? {
@@ -1700,6 +1715,10 @@ function App() {
               selectedId={moveProgress > 0 ? undefined : selectedId}
               mode={mode}
               lightTraceVisible={lightTraceVisible}
+              lightSample={currentLightSample}
+              onLightSample={(point) =>
+                setLightSample({ sceneId: scene.id, ...point })
+              }
               tool={tool}
               poseMode={
                 poseMode &&
@@ -1823,6 +1842,27 @@ function App() {
                   5 lx <b>50</b> <b>200</b> 500+ lx
                 </span>
                 <small>Fixture beams, distance falloff and wall openings</small>
+                {lightReading && currentLightSample ? (
+                  <div className="light-meter">
+                    <div className="light-meter-total">
+                      <b>{lightReading.total.toFixed(1)} lx</b>
+                      <span>
+                        {currentLightSample.x.toFixed(1)},{" "}
+                        {currentLightSample.z.toFixed(1)} m
+                      </span>
+                    </div>
+                    <ul>
+                      {lightReading.contributors.map((light) => (
+                        <li key={light.id}>
+                          <span>{light.name}</span>
+                          <b>{light.lux.toFixed(1)} lx</b>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <small>Click the plan floor to meter a point.</small>
+                )}
               </div>
             )}
             {(mode === "camera" || (mode === "stage" && hasMotion)) && (

@@ -21,6 +21,7 @@ import {
   fixtureLumens,
   floorIlluminance,
   lightAimPoint,
+  sampleFloorIlluminance,
   traceFloor,
 } from "../src/lighting.ts";
 import {
@@ -472,6 +473,42 @@ test("direct light trace follows falloff, beam aim and wall openings", () => {
   };
   assert.equal(floorIlluminance(practical, { x: 2, z: 0 }, [wall]), 0);
   assert.ok(traceFloor([practical, wall]).values.some((lux) => lux > 0));
+});
+
+test("light meter totals visible fixtures and reports occluded contributions", () => {
+  const base = sampleProject().scenes[0].items.find(
+    (item) => item.kind === "light",
+  );
+  const near = {
+    ...base,
+    id: "near",
+    name: "Near",
+    x: 0,
+    z: 0,
+    y: 0,
+    height: 2,
+    lightType: "practical",
+    lumens: 1000,
+  };
+  const far = { ...near, id: "far", name: "Far", x: 3 };
+  const hidden = { ...near, id: "hidden", hidden: true };
+  const point = { x: 0, z: 0 };
+  const reading = sampleFloorIlluminance([far, hidden, near], point);
+  assert.deepEqual(
+    reading.contributors.map((light) => light.name),
+    ["Near", "Far"],
+  );
+  assert.equal(
+    reading.total,
+    reading.contributors[0].lux + reading.contributors[1].lux,
+  );
+  const wall = wallBetween({ x: 1, z: -1 }, { x: 1, z: 1 }, 1);
+  const blocked = sampleFloorIlluminance([near, far, wall], point);
+  assert.equal(blocked.contributors.find((light) => light.id === "far").lux, 0);
+  assert.equal(
+    blocked.total,
+    blocked.contributors.find((light) => light.id === "near").lux,
+  );
 });
 
 test("fixture photometry rejects invalid output and tilt", () => {
