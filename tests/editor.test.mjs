@@ -61,6 +61,13 @@ test("rectangular rooms share walls and report enclosed floor area", () => {
     2,
   );
   assert.equal(planRooms(moved)[0].area, 13.5);
+  const offset = rectangularRoom(first, { x: 4, z: 1 }, { x: 7, z: 3 });
+  assert.deepEqual(
+    planRooms(offset)
+      .map((room) => room.area)
+      .sort((a, b) => a - b),
+    [6, 12],
+  );
 });
 
 test("shaped rooms close through shared and partially overlapping walls", () => {

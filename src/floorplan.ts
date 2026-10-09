@@ -30,24 +30,7 @@ export function rectangularRoom(
     { x: right, z: bottom },
     { x: left, z: bottom },
   ];
-  const walls = items.filter((item) => item.kind === "wall");
-  const additions: SceneItem[] = [];
-  for (let index = 0; index < 4; index++) {
-    const a = corners[index];
-    const b = corners[(index + 1) % 4];
-    const shared = walls.find((wall) => {
-      const [start, end] = wallEndpoints(wall);
-      return (
-        (near(start, a) && near(end, b)) || (near(start, b) && near(end, a))
-      );
-    });
-    if (shared) continue;
-    additions.push({
-      ...wallBetween(a, b, walls.length + additions.length + 1),
-      name: `Room wall ${walls.length + additions.length + 1}`,
-    });
-  }
-  return [...items, ...additions];
+  return polygonRoom(items, corners);
 }
 
 export function polygonRoom(
