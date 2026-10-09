@@ -11,7 +11,7 @@ import {
 import * as THREE from "three";
 import { actorPoseAt, snapWallPoint, wallEndpoints } from "./model";
 import SetPiece from "./SetPieces";
-import type { SceneItem, SetScene, Shot } from "./model";
+import type { MannequinJoints, SceneItem, SetScene, Shot } from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
 
@@ -136,11 +136,13 @@ function CameraRig({
 
 function SelectedObject({
   item,
+  actorJoints,
   mode,
   onSelect,
   onMove,
 }: {
   item: SceneItem;
+  actorJoints?: MannequinJoints;
   mode: ViewMode;
   onSelect: (id: string) => void;
   onMove: (id: string, x: number, y: number, z: number) => void;
@@ -164,7 +166,7 @@ function SelectedObject({
           onSelect(item.id);
         }}
       >
-        <SetPiece item={item} />
+        <SetPiece item={item} actorJoints={actorJoints} />
         <mesh position={[0, Math.max(0.3, item.height / 2), 0]}>
           <boxGeometry
             args={[
@@ -467,6 +469,7 @@ function StageContent({
             <SelectedObject
               key={item.id}
               item={item}
+              actorJoints={shot?.actorJoints?.[item.id] ?? item.mannequinJoints}
               mode={mode}
               onSelect={onSelect}
               onMove={onMove}
@@ -482,6 +485,9 @@ function StageContent({
             >
               <SetPiece
                 item={item}
+                actorJoints={
+                  shot?.actorJoints?.[item.id] ?? item.mannequinJoints
+                }
                 walkPhase={
                   shot?.actorPaths?.[item.id]
                     ? moveProgress * Math.PI * 6

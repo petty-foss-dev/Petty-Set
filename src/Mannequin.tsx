@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
-import type { SceneItem } from "./model";
+import { mannequinJointsForPose } from "./model";
+import type { MannequinJoints, SceneItem } from "./model";
 
 function turned(points: [number, number][]) {
   return new THREE.LatheGeometry(
@@ -133,17 +134,20 @@ function Piece({
 
 export default function Mannequin({
   item,
+  joints,
   walkPhase = 0,
 }: {
   item: SceneItem;
+  joints?: MannequinJoints;
   walkPhase?: number;
 }) {
   const map = useMemo(() => grainTexture(), []);
   useEffect(() => () => map.dispose(), [map]);
   const color = item.color ?? "#d2ab7d";
   const connector = "#745235";
-  const pose = item.mannequinPose ?? "neutral";
+  const pose = joints ?? mannequinJointsForPose(item.mannequinPose);
   const swing = Math.sin(walkPhase);
+  const radians = THREE.MathUtils.degToRad;
   return (
     <group scale={[item.width / 0.5, item.height / 1.75, item.depth / 0.4]}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.009, 0]}>
@@ -177,25 +181,33 @@ export default function Mannequin({
         scale={[0.065, 0.055, 0.065]}
         color={connector}
       />
-      <Piece geometry={head} position={[0, 1.55, 0]} color={color} map={map} />
-      <mesh position={[0, 1.39, 0]} castShadow>
-        <cylinderGeometry args={[0.085, 0.075, 0.035, 18]} />
-        <meshStandardMaterial color={connector} roughness={0.76} />
-      </mesh>
-      {[-1, 1].map((side) => (
+      <group
+        position={[0, 1.43, 0]}
+        rotation={[radians(pose.headNod), 0, radians(pose.headTilt)]}
+      >
+        <Piece
+          geometry={head}
+          position={[0, 0.12, 0]}
+          color={color}
+          map={map}
+        />
+        <mesh position={[0, -0.04, 0]} castShadow>
+          <cylinderGeometry args={[0.085, 0.075, 0.035, 18]} />
+          <meshStandardMaterial color={connector} roughness={0.76} />
+        </mesh>
+      </group>
+      {([-1, 1] as const).map((side) => (
         <group key={side}>
           <group
             position={[side * 0.255, 1.36, 0]}
             rotation={[
-              side * swing * 0.22,
+              -radians(
+                side === -1 ? pose.leftShoulderSwing : pose.rightShoulderSwing,
+              ) +
+                side * swing * 0.22,
               0,
-              side === 1
-                ? pose === "greeting"
-                  ? 2.68
-                  : pose === "pointing"
-                    ? 1.42
-                    : 0
-                : 0,
+              side *
+                radians(side === -1 ? pose.leftArmLift : pose.rightArmLift),
             ]}
           >
             <group position={[-side * 0.255, -1.36, 0]}>
@@ -227,7 +239,14 @@ export default function Mannequin({
               />
               <group
                 position={[side * 0.3, 1.01, 0]}
-                rotation={[0, 0, side === 1 && pose === "greeting" ? -0.22 : 0]}
+                rotation={[
+                  0,
+                  0,
+                  -side *
+                    radians(
+                      side === -1 ? pose.leftElbowBend : pose.rightElbowBend,
+                    ),
+                ]}
               >
                 <group position={[-side * 0.3, -1.01, 0]}>
                   <Piece
@@ -265,7 +284,12 @@ export default function Mannequin({
           </group>
           <group
             position={[side * 0.105, 0.63, 0]}
-            rotation={[-side * swing * 0.28, 0, 0]}
+            rotation={[
+              -radians(side === -1 ? pose.leftHipSwing : pose.rightHipSwing) -
+                side * swing * 0.28,
+              0,
+              0,
+            ]}
           >
             <group position={[-side * 0.105, -0.63, 0]}>
               <Piece
@@ -301,25 +325,36 @@ export default function Mannequin({
                   roughness={0.84}
                 />
               </mesh>
-              <Piece
-                geometry={shin}
-                position={[side * 0.11, 0.2, 0]}
-                color={color}
-                map={map}
-              />
-              <Piece
-                geometry={joint}
-                position={[side * 0.11, 0.065, 0]}
-                scale={[0.043, 0.04, 0.043]}
-                color={connector}
-              />
-              <Piece
-                geometry={foot}
-                position={[side * 0.11, 0.09, -0.075]}
-                scale={[0.105, 0.047, 0.17]}
-                color={color}
-                map={map}
-              />
+              <group
+                position={[side * 0.11, 0.29, 0]}
+                rotation={[
+                  radians(side === -1 ? pose.leftKneeBend : pose.rightKneeBend),
+                  0,
+                  0,
+                ]}
+              >
+                <group position={[-side * 0.11, -0.29, 0]}>
+                  <Piece
+                    geometry={shin}
+                    position={[side * 0.11, 0.2, 0]}
+                    color={color}
+                    map={map}
+                  />
+                  <Piece
+                    geometry={joint}
+                    position={[side * 0.11, 0.065, 0]}
+                    scale={[0.043, 0.04, 0.043]}
+                    color={connector}
+                  />
+                  <Piece
+                    geometry={foot}
+                    position={[side * 0.11, 0.09, -0.075]}
+                    scale={[0.105, 0.047, 0.17]}
+                    color={color}
+                    map={map}
+                  />
+                </group>
+              </group>
             </group>
           </group>
         </group>

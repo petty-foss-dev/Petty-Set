@@ -1215,3 +1215,60 @@ button:focus-visible {
   background: #fffaf1;
   border-color: #d8c7ab;
 }
+.pose-editor {
+  margin-top: 12px;
+  border: 1px solid #d9cbb7;
+  border-radius: 7px;
+  background: #fffaf1;
+  padding: 10px 12px;
+}
+.pose-editor summary {
+  cursor: pointer;
+  color: #704e36;
+  font-size: 11px;
+  font-weight: 700;
+}
+.pose-editor[open] summary {
+  margin-bottom: 13px;
+}
+.pose-group + .pose-group {
+  border-top: 1px solid #e8dbc8;
+  margin-top: 12px;
+  padding-top: 8px;
+}
+.pose-group h4 {
+  margin: 0 0 8px;
+  color: #8a7156;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.pose-joint {
+  display: block;
+  margin: 9px 0;
+  color: #50483d;
+  font-size: 11px;
+}
+.pose-joint span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pose-joint output {
+  color: #9b633e;
+  font-variant-numeric: tabular-nums;
+}
+.pose-joint input {
+  display: block;
+  width: 100%;
+  margin: 6px 0 0;
+  accent-color: #b86d3c;
+}
+.pose-reset {
+  margin-top: 6px;
+  padding: 0;
+  background: none;
+  color: #9e6038;
+  font-size: 11px;
+  font-weight: 700;
+}

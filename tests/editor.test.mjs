@@ -11,6 +11,8 @@ import {
   actorPoseAt,
   outdoorScene,
   backlotScene,
+  mannequinJointsForPose,
+  mannequinPoseForJoints,
 } from "../src/model.ts";
 import { cameraOptics } from "../src/cinematography.ts";
 import { shotListCSV } from "../src/shotList.ts";
@@ -160,6 +162,10 @@ test("backlot preset keeps editable facade styles and actor route valid", () => 
       .map((item) => item.facadeStyle),
     ["storefront", "brick", "theater"],
   );
+  const supporting = scene.items.find(
+    (item) => item.name === "Supporting player",
+  );
+  assert.equal(scene.shots[0].actorJoints[supporting.id].headTilt, 12);
   const invalid = structuredClone(project);
   invalid.scenes[0].items.find((item) => item.kind === "facade").facadeStyle =
     "castle";
@@ -182,6 +188,31 @@ test("backlot preset keeps editable facade styles and actor route valid", () => 
     (item) => item.kind === "actor",
   ).mannequinPose = "flying";
   assert.equal(isProject(invalidPose), false);
+});
+
+test("mannequin joints are saved per shot and validated", () => {
+  const project = sampleProject();
+  const scene = project.scenes[0];
+  const actor = scene.items.find((item) => item.kind === "actor");
+  const greeting = mannequinJointsForPose("greeting");
+  assert.equal(mannequinPoseForJoints(greeting), "greeting");
+  scene.shots[0].actorJoints = { [actor.id]: greeting };
+  const secondShot = {
+    ...structuredClone(scene.shots[0]),
+    id: "second-shot",
+    actorJoints: { [actor.id]: mannequinJointsForPose("neutral") },
+  };
+  scene.shots.push(secondShot);
+  scene.shootOrder.push(secondShot.id);
+  assert.equal(isProject(project), true);
+  assert.equal(scene.shots[1].actorJoints[actor.id].rightArmLift, 0);
+  const invalid = structuredClone(project);
+  invalid.scenes[0].shots[0].actorJoints[actor.id].rightArmLift = 220;
+  assert.equal(isProject(invalid), false);
+  const orphan = structuredClone(project);
+  orphan.scenes[0].shots[0].actorJoints.missing =
+    mannequinJointsForPose("pointing");
+  assert.equal(isProject(orphan), false);
 });
 
 test("project import rejects asset data without a GLB 2 header", () => {

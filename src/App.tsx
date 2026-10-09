@@ -46,6 +46,9 @@ import type { ViewMode } from "./Stage";
 import {
   extendRoom,
   backlotScene,
+  mannequinJointControls,
+  mannequinJointsForPose,
+  mannequinPoseForJoints,
   furnishedScene,
   outdoorScene,
   id,
@@ -57,6 +60,7 @@ import {
 import type {
   ActorPath,
   ItemKind,
+  MannequinJoints,
   Project,
   SceneEnvironment,
   SceneItem,
@@ -168,6 +172,12 @@ function App() {
     [scene, shot],
   );
   const selected = stageScene.items.find((value) => value.id === selectedId);
+  const selectedJoints =
+    selected?.kind === "actor"
+      ? (shot?.actorJoints?.[selected.id] ??
+        selected.mannequinJoints ??
+        mannequinJointsForPose(selected.mannequinPose))
+      : undefined;
   const orderedShots =
     order === "story"
       ? scene.shots
@@ -410,6 +420,9 @@ function App() {
       z: selected.z + 0.5,
       hidden: false,
       locked: false,
+      ...(selected.kind === "actor" && selectedJoints
+        ? { mannequinJoints: { ...selectedJoints } }
+        : {}),
     };
     updateScene((current) => ({ ...current, items: [...current.items, copy] }));
     setSelectedId(copy.id);
@@ -435,14 +448,17 @@ function App() {
         .map((value) => {
           if (
             !value.actorMarks?.[selected.id] &&
-            !value.actorPaths?.[selected.id]
+            !value.actorPaths?.[selected.id] &&
+            !value.actorJoints?.[selected.id]
           )
             return value;
           const actorMarks = { ...value.actorMarks };
           const actorPaths = { ...value.actorPaths };
+          const actorJoints = { ...value.actorJoints };
           delete actorMarks[selected.id];
           delete actorPaths[selected.id];
-          return { ...value, actorMarks, actorPaths };
+          delete actorJoints[selected.id];
+          return { ...value, actorMarks, actorPaths, actorJoints };
         }),
       shootOrder: current.shootOrder.filter(
         (value) => !linkedShots.some((shot) => shot.id === value),
@@ -490,6 +506,14 @@ function App() {
             ];
           }),
       ),
+      actorJoints: shot?.actorJoints
+        ? Object.fromEntries(
+            Object.entries(shot.actorJoints).map(([actorId, joints]) => [
+              actorId,
+              { ...joints },
+            ]),
+          )
+        : undefined,
     };
     updateScene((current) => ({
       ...current,
@@ -519,6 +543,17 @@ function App() {
     else delete actorPaths[actorId];
     updateShot({ actorPaths });
     resetMove();
+  }
+
+  function updateActorJoints(actorId: string, joints?: MannequinJoints) {
+    if (shot) {
+      const actorJoints = { ...shot.actorJoints };
+      if (joints) actorJoints[actorId] = joints;
+      else delete actorJoints[actorId];
+      updateShot({ actorJoints });
+    } else {
+      updateItem(actorId, { mannequinJoints: joints });
+    }
   }
 
   function moveShot(direction: -1 | 1) {
@@ -1435,7 +1470,7 @@ function App() {
               <fieldset className="inspector-fields" disabled={selected.locked}>
                 {selected.kind === "actor" && shot && (
                   <div className="actor-mark-note">
-                    Position and facing are saved for this shot.
+                    Position, facing, and joint pose are saved for this shot.
                     {shot.actorMarks?.[selected.id] && (
                       <button
                         onClick={() =>
@@ -1460,19 +1495,65 @@ function App() {
                     <label className="full-field">
                       <span>Pose</span>
                       <select
-                        value={selected.mannequinPose ?? "neutral"}
-                        onChange={(event) =>
-                          updateItem(selected.id, {
-                            mannequinPose: event.target
-                              .value as SceneItem["mannequinPose"],
-                          })
-                        }
+                        value={mannequinPoseForJoints(selectedJoints!)}
+                        onChange={(event) => {
+                          if (event.target.value !== "custom")
+                            updateActorJoints(
+                              selected.id,
+                              mannequinJointsForPose(
+                                event.target
+                                  .value as SceneItem["mannequinPose"],
+                              ),
+                            );
+                        }}
                       >
                         <option value="neutral">Neutral</option>
                         <option value="greeting">Greeting</option>
                         <option value="pointing">Pointing</option>
+                        <option value="custom" disabled>
+                          Custom
+                        </option>
                       </select>
                     </label>
+                    <details className="pose-editor">
+                      <summary>Fine tune joints</summary>
+                      {(["Head", "Arms", "Legs"] as const).map((group) => (
+                        <div className="pose-group" key={group}>
+                          <h4>{group}</h4>
+                          {mannequinJointControls
+                            .filter((control) => control.group === group)
+                            .map(({ key, label, min, max }) => (
+                              <label key={key} className="pose-joint">
+                                <span>
+                                  {label}
+                                  <output>{selectedJoints![key]}°</output>
+                                </span>
+                                <input
+                                  type="range"
+                                  aria-label={label}
+                                  min={min}
+                                  max={max}
+                                  step="1"
+                                  value={selectedJoints![key]}
+                                  onChange={(event) =>
+                                    updateActorJoints(selected.id, {
+                                      ...selectedJoints!,
+                                      [key]: Number(event.target.value),
+                                    })
+                                  }
+                                />
+                              </label>
+                            ))}
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="pose-reset"
+                        onClick={() => updateActorJoints(selected.id)}
+                      >
+                        Reset to actor default
+                      </button>
+                    </details>
                     <label className="full-field">
                       <span>Wood finish</span>
                       <input

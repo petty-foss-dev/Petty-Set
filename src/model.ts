@@ -34,6 +34,126 @@ export interface ActorPath {
   end: ActorMark;
 }
 
+export interface MannequinJoints {
+  headTilt: number;
+  headNod: number;
+  leftShoulderSwing: number;
+  rightShoulderSwing: number;
+  leftArmLift: number;
+  rightArmLift: number;
+  leftElbowBend: number;
+  rightElbowBend: number;
+  leftHipSwing: number;
+  rightHipSwing: number;
+  leftKneeBend: number;
+  rightKneeBend: number;
+}
+
+export const mannequinJointControls: {
+  key: keyof MannequinJoints;
+  label: string;
+  min: number;
+  max: number;
+  group: "Head" | "Arms" | "Legs";
+}[] = [
+  { key: "headTilt", label: "Tilt", min: -45, max: 45, group: "Head" },
+  { key: "headNod", label: "Nod", min: -35, max: 35, group: "Head" },
+  {
+    key: "leftShoulderSwing",
+    label: "Left arm forward",
+    min: -110,
+    max: 110,
+    group: "Arms",
+  },
+  {
+    key: "rightShoulderSwing",
+    label: "Right arm forward",
+    min: -110,
+    max: 110,
+    group: "Arms",
+  },
+  {
+    key: "leftArmLift",
+    label: "Left arm raise",
+    min: 0,
+    max: 160,
+    group: "Arms",
+  },
+  {
+    key: "rightArmLift",
+    label: "Right arm raise",
+    min: 0,
+    max: 160,
+    group: "Arms",
+  },
+  {
+    key: "leftElbowBend",
+    label: "Left elbow",
+    min: 0,
+    max: 145,
+    group: "Arms",
+  },
+  {
+    key: "rightElbowBend",
+    label: "Right elbow",
+    min: 0,
+    max: 145,
+    group: "Arms",
+  },
+  {
+    key: "leftHipSwing",
+    label: "Left leg forward",
+    min: -75,
+    max: 75,
+    group: "Legs",
+  },
+  {
+    key: "rightHipSwing",
+    label: "Right leg forward",
+    min: -75,
+    max: 75,
+    group: "Legs",
+  },
+  { key: "leftKneeBend", label: "Left knee", min: 0, max: 130, group: "Legs" },
+  {
+    key: "rightKneeBend",
+    label: "Right knee",
+    min: 0,
+    max: 130,
+    group: "Legs",
+  },
+];
+
+export function mannequinJointsForPose(
+  pose: SceneItem["mannequinPose"],
+): MannequinJoints {
+  return {
+    headTilt: 0,
+    headNod: 0,
+    leftShoulderSwing: 0,
+    rightShoulderSwing: 0,
+    leftArmLift: 0,
+    rightArmLift: pose === "greeting" ? 154 : pose === "pointing" ? 81 : 0,
+    leftElbowBend: 0,
+    rightElbowBend: pose === "greeting" ? 13 : 0,
+    leftHipSwing: 0,
+    rightHipSwing: 0,
+    leftKneeBend: 0,
+    rightKneeBend: 0,
+  };
+}
+
+export function mannequinPoseForJoints(
+  joints: MannequinJoints,
+): SceneItem["mannequinPose"] | "custom" {
+  for (const pose of ["neutral", "greeting", "pointing"] as const) {
+    const preset = mannequinJointsForPose(pose);
+    if (mannequinJointControls.every(({ key }) => joints[key] === preset[key]))
+      return pose;
+  }
+  return "custom";
+}
+
 export interface SceneEnvironment {
   ground: "studio" | "grass" | "asphalt" | "sand";
   skyColor: string;
@@ -65,6 +185,7 @@ export interface SceneItem {
   signText?: string;
   surfaceStyle?: "plain" | "road" | "sidewalk";
   mannequinPose?: "neutral" | "greeting" | "pointing";
+  mannequinJoints?: MannequinJoints;
   assetData?: string;
   roomExtended?: boolean;
   hidden?: boolean;
@@ -88,6 +209,7 @@ export interface Shot {
   aspectRatio?: AspectRatio;
   actorMarks?: Record<string, ActorMark>;
   actorPaths?: Record<string, ActorPath>;
+  actorJoints?: Record<string, MannequinJoints>;
   cameraEnd?: { x: number; z: number; height: number; rotation: number };
   cameraWaypoints?: {
     x: number;
@@ -153,6 +275,14 @@ const itemKinds: ItemKind[] = [
 const isActorMark = (value: unknown): value is ActorMark =>
   isRecord(value) &&
   ["x", "y", "z", "rotation"].every((key) => isFiniteNumber(value[key]));
+const isMannequinJoints = (value: unknown): value is MannequinJoints =>
+  isRecord(value) &&
+  mannequinJointControls.every(
+    ({ key, min, max }) =>
+      isFiniteNumber(value[key]) &&
+      (value[key] as number) >= min &&
+      (value[key] as number) <= max,
+  );
 
 export function isProject(value: unknown): value is Project {
   if (
@@ -270,6 +400,9 @@ export function isProject(value: unknown): value is Project {
             !["neutral", "greeting", "pointing"].includes(
               item.mannequinPose as string,
             ))) ||
+        (item.mannequinJoints !== undefined &&
+          (item.kind !== "actor" ||
+            !isMannequinJoints(item.mannequinJoints))) ||
         (item.kind === "asset" &&
           (!isString(item.assetData) ||
             !item.assetData.startsWith(
@@ -328,6 +461,13 @@ export function isProject(value: unknown): value is Project {
             !Array.isArray(path.waypoints) ||
             !path.waypoints.every(isActorMark)
           )
+            return false;
+        }
+      }
+      if (shot.actorJoints !== undefined) {
+        if (!isRecord(shot.actorJoints)) return false;
+        for (const [actorId, joints] of Object.entries(shot.actorJoints)) {
+          if (items.get(actorId) !== "actor" || !isMannequinJoints(joints))
             return false;
         }
       }
@@ -854,6 +994,14 @@ export function backlotScene(): SetScene {
     z: 0.7,
     rotation: 15,
   };
+  const supporting = {
+    ...makeItem("actor", 2),
+    name: "Supporting player",
+    x: 1.5,
+    z: -0.6,
+    rotation: -25,
+    mannequinPose: "greeting" as const,
+  };
   const items: SceneItem[] = [
     {
       ...makeItem("ground", 1),
@@ -956,14 +1104,7 @@ export function backlotScene(): SetScene {
       rotation: 180,
     },
     lead,
-    {
-      ...makeItem("actor", 2),
-      name: "Supporting player",
-      x: 1.5,
-      z: -0.6,
-      rotation: -25,
-      mannequinPose: "greeting",
-    },
+    supporting,
     camera,
   ];
   const shot: Shot = {
@@ -977,6 +1118,14 @@ export function backlotScene(): SetScene {
       [lead.id]: {
         waypoints: [{ x: -0.8, y: 0, z: -0.3, rotation: 25 }],
         end: { x: 0.2, y: 0, z: -1.6, rotation: 55 },
+      },
+    },
+    actorJoints: {
+      [supporting.id]: {
+        ...mannequinJointsForPose("greeting"),
+        headTilt: 12,
+        leftArmLift: 25,
+        rightElbowBend: 20,
       },
     },
   };

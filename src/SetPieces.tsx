@@ -1,7 +1,7 @@
 import { Component, Suspense, lazy } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
-import type { SceneItem } from "./model";
+import type { MannequinJoints, SceneItem } from "./model";
 import Mannequin from "./Mannequin";
 import { Bench, Tree, Vehicle } from "./OutdoorAssets";
 import { Barrel, Facade, Streetlamp, Surface } from "./BacklotAssets";
@@ -553,16 +553,20 @@ function Light({ item }: { item: SceneItem }) {
 
 export default function SetPiece({
   item,
+  actorJoints,
   walkPhase,
 }: {
   item: SceneItem;
+  actorJoints?: MannequinJoints;
   walkPhase?: number;
 }) {
   switch (item.kind) {
     case "wall":
       return <Wall item={item} />;
     case "actor":
-      return <Mannequin item={item} walkPhase={walkPhase} />;
+      return (
+        <Mannequin item={item} joints={actorJoints} walkPhase={walkPhase} />
+      );
     case "tree":
       return <Tree item={item} />;
     case "bench":
