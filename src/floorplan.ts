@@ -1,8 +1,79 @@
 import { id, wallBetween, wallEndpoints, wallOpenings } from "./model.ts";
-import type { SceneItem, SetScene } from "./model.ts";
+import type { FloorFinish, RoomFinish, SceneItem, SetScene } from "./model.ts";
 
 export type PlanPoint = { x: number; z: number };
 export type PlanRoom = { points: PlanPoint[]; area: number; center: PlanPoint };
+
+function containsPoint(points: PlanPoint[], point: PlanPoint): boolean {
+  let inside = false;
+  for (
+    let index = 0, previous = points.length - 1;
+    index < points.length;
+    previous = index++
+  ) {
+    const a = points[index];
+    const b = points[previous];
+    if (
+      a.z > point.z !== b.z > point.z &&
+      point.x < ((b.x - a.x) * (point.z - a.z)) / (b.z - a.z) + a.x
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+
+function roomCoverage(room: PlanPoint[], footprint: PlanPoint[]): number {
+  const xs = room.map((point) => point.x);
+  const zs = room.map((point) => point.z);
+  const minX = Math.min(...xs);
+  const minZ = Math.min(...zs);
+  const width = Math.max(...xs) - minX;
+  const depth = Math.max(...zs) - minZ;
+  let inside = 0;
+  let covered = 0;
+  for (let row = 0; row < 24; row++) {
+    for (let column = 0; column < 24; column++) {
+      const point = {
+        x: minX + ((column + 0.5) / 24) * width,
+        z: minZ + ((row + 0.5) / 24) * depth,
+      };
+      if (!containsPoint(room, point)) continue;
+      inside++;
+      if (containsPoint(footprint, point)) covered++;
+    }
+  }
+  return inside ? covered / inside : 0;
+}
+
+export function roomFinishFor(
+  room: PlanRoom,
+  assignments: RoomFinish[] = [],
+): FloorFinish {
+  let finish: FloorFinish = "timber";
+  let best = 0.35;
+  for (const assignment of assignments) {
+    const coverage = roomCoverage(room.points, assignment.points);
+    if (coverage < best) continue;
+    best = coverage;
+    finish = assignment.finish;
+  }
+  return finish;
+}
+
+export function setRoomFinish(
+  assignments: RoomFinish[] = [],
+  room: PlanRoom,
+  finish: FloorFinish,
+): RoomFinish[] {
+  return [
+    ...assignments.filter(
+      (assignment) =>
+        roomCoverage(room.points, assignment.points) < 0.95 ||
+        roomCoverage(assignment.points, room.points) < 0.95,
+    ),
+    { finish, points: room.points.map((point) => ({ ...point })) },
+  ];
+}
 
 const key = (point: PlanPoint) => {
   const coordinate = (value: number) => {
@@ -424,11 +495,18 @@ export function floorplanSVG(scene: SetScene): string {
           "'": "&apos;",
         })[char]!,
     );
-  const rooms = planRooms(scene.items).map(
-    (room, index) =>
-      `<polygon points="${room.points.map((point) => `${x(point.x)},${y(point.z)}`).join(" ")}" fill="#eee6d8" stroke="none"/>` +
-      `<text x="${x(room.center.x)}" y="${y(room.center.z)}" text-anchor="middle" fill="#7b6d59" font-size="14">Room ${index + 1} · ${room.area.toFixed(1)} m²</text>`,
-  );
+  const rooms = planRooms(scene.items).map((room, index) => {
+    const fill = {
+      timber: "#d6b991",
+      tile: "#d6d9d2",
+      concrete: "#b9bcb5",
+      stone: "#c9bda7",
+    }[roomFinishFor(room, scene.roomFinishes)];
+    return (
+      `<polygon points="${room.points.map((point) => `${x(point.x)},${y(point.z)}`).join(" ")}" fill="${fill}" stroke="none"/>` +
+      `<text x="${x(room.center.x)}" y="${y(room.center.z)}" text-anchor="middle" fill="#534c43" font-size="14">Room ${index + 1} · ${room.area.toFixed(1)} m²</text>`
+    );
+  });
   const wallShapes = walls.map((wall) => {
     const [a, b] = wallEndpoints(wall);
     const line = `<line x1="${x(a.x)}" y1="${y(a.z)}" x2="${x(b.x)}" y2="${y(b.z)}" stroke="#34332f" stroke-width="${Math.max(4, wall.depth * scale).toFixed(1)}" stroke-linecap="square"/>`;

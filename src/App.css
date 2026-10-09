@@ -1717,6 +1717,40 @@ button:focus-visible {
   white-space: nowrap;
 }
 
+.room-finishes {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #ded8cb);
+}
+
+.room-finishes h4 {
+  margin: 0;
+  color: #6c706a;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.room-finishes label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.room-finishes select {
+  min-width: 86px;
+  padding: 5px 6px;
+  border: 1px solid #ded8cb;
+  border-radius: 5px;
+  background: #fbfaf7;
+  color: #343b38;
+  font: inherit;
+}
+
 .calibration-fields {
   display: grid;
   gap: 9px;

@@ -16,11 +16,17 @@ import {
   wallEndpoints,
 } from "./model";
 import { actorActionPose } from "./actorActions";
-import { planRooms } from "./floorplan";
+import { planRooms, roomFinishFor } from "./floorplan";
 import type { PlanPoint } from "./floorplan";
 import SetPiece from "./SetPieces";
 import Mannequin from "./Mannequin";
-import type { MannequinJoints, SceneItem, SetScene, Shot } from "./model";
+import type {
+  FloorFinish,
+  MannequinJoints,
+  SceneItem,
+  SetScene,
+  Shot,
+} from "./model";
 import { aspectRatios, cameraOptics } from "./cinematography";
 import type { AspectRatio } from "./cinematography";
 import { fixtureLumens, lightDirection, traceFloor } from "./lighting";
@@ -56,6 +62,90 @@ function surfaceTexture(ground: "grass" | "asphalt" | "sand") {
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.repeat.set(70, 70);
   texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function roomTexture(finish: FloorFinish): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  const context = canvas.getContext("2d")!;
+  const base = {
+    timber: "#c5a67d",
+    tile: "#d4d6cf",
+    concrete: "#aeb2ad",
+    stone: "#bdb29e",
+  }[finish];
+  context.fillStyle = base;
+  context.fillRect(0, 0, 256, 256);
+  if (finish === "timber") {
+    for (let row = 0; row < 8; row++) {
+      const top = row * 32;
+      context.fillStyle =
+        row % 3 === 0 ? "#cbae87" : row % 3 === 1 ? "#bea078" : "#c7a982";
+      context.fillRect(0, top + 2, 256, 29);
+      context.fillStyle = "#806a50";
+      context.fillRect(0, top, 256, 2);
+      context.fillRect(row % 2 ? 64 : 192, top, 2, 32);
+      context.strokeStyle = "#a98a64";
+      context.lineWidth = 1;
+      for (let line = 0; line < 4; line++) {
+        context.beginPath();
+        context.moveTo(0, top + 7 + line * 5);
+        context.bezierCurveTo(
+          70,
+          top + 5 + line * 5,
+          180,
+          top + 9 + line * 5,
+          256,
+          top + 7 + line * 5,
+        );
+        context.stroke();
+      }
+    }
+  } else if (finish === "tile") {
+    context.fillStyle = "#a7aaa5";
+    context.fillRect(0, 0, 256, 256);
+    for (let row = 0; row < 4; row++)
+      for (let column = 0; column < 4; column++) {
+        context.fillStyle = (row + column) % 3 === 0 ? "#e1e0d8" : "#d1d5d0";
+        context.fillRect(column * 64 + 3, row * 64 + 3, 58, 58);
+      }
+  } else if (finish === "stone") {
+    context.fillStyle = "#8d8478";
+    context.fillRect(0, 0, 256, 256);
+    for (let row = 0; row < 4; row++)
+      for (let column = -1; column < 4; column++) {
+        context.fillStyle = (row + column) % 3 === 0 ? "#c7bca7" : "#b8ad99";
+        context.fillRect(
+          column * 80 + (row % 2) * 40 + 3,
+          row * 64 + 3,
+          74,
+          58,
+        );
+      }
+  } else {
+    context.strokeStyle = "#919792";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(128, 0);
+    context.lineTo(128, 256);
+    context.moveTo(0, 128);
+    context.lineTo(256, 128);
+    context.stroke();
+  }
+  let seed = 121;
+  for (let index = 0; index < 900; index++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const x = seed % 256;
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    const y = seed % 256;
+    context.fillStyle = index % 2 ? "#ffffff18" : "#352c2810";
+    context.fillRect(x, y, 1 + (seed % 2), 1);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
   return texture;
 }
 
@@ -496,6 +586,24 @@ function StageContent({
     return snap(point);
   };
   const rooms = useMemo(() => planRooms(scene.items), [scene.items]);
+  const roomFinishes = useMemo(
+    () => rooms.map((room) => roomFinishFor(room, scene.roomFinishes)),
+    [rooms, scene.roomFinishes],
+  );
+  const roomTextures = useMemo(
+    () => ({
+      timber: roomTexture("timber"),
+      tile: roomTexture("tile"),
+      concrete: roomTexture("concrete"),
+      stone: roomTexture("stone"),
+    }),
+    [],
+  );
+  useEffect(
+    () => () =>
+      Object.values(roomTextures).forEach((texture) => texture.dispose()),
+    [roomTextures],
+  );
   const corners = useMemo(() => {
     const values = scene.items
       .filter((item) => item.kind === "wall" && !item.hidden && !item.locked)
@@ -684,7 +792,8 @@ function StageContent({
                 >
                   <shapeGeometry args={[shape]} />
                   <meshStandardMaterial
-                    color="#b6aa92"
+                    map={roomTextures[roomFinishes[index]]}
+                    color="#ffffff"
                     roughness={0.96}
                     side={THREE.DoubleSide}
                   />

@@ -337,6 +337,7 @@ export interface SetScene {
   shots: Shot[];
   shootOrder: string[];
   floorplan?: string;
+  roomFinishes?: RoomFinish[];
   environment?: SceneEnvironment;
   floorplanPlacement?: {
     x: number;
@@ -346,6 +347,13 @@ export interface SetScene {
     rotation: number;
     opacity: number;
   };
+}
+
+export type FloorFinish = "timber" | "tile" | "concrete" | "stone";
+
+export interface RoomFinish {
+  finish: FloorFinish;
+  points: { x: number; z: number }[];
 }
 
 export interface Project {
@@ -438,6 +446,26 @@ export function isProject(value: unknown): value is Project {
       )
         return false;
     }
+    if (
+      scene.roomFinishes !== undefined &&
+      (!Array.isArray(scene.roomFinishes) ||
+        scene.roomFinishes.some(
+          (assignment) =>
+            !isRecord(assignment) ||
+            !["timber", "tile", "concrete", "stone"].includes(
+              assignment.finish as string,
+            ) ||
+            !Array.isArray(assignment.points) ||
+            assignment.points.length < 3 ||
+            assignment.points.some(
+              (point) =>
+                !isRecord(point) ||
+                !isFiniteNumber(point.x) ||
+                !isFiniteNumber(point.z),
+            ),
+        ))
+    )
+      return false;
     if (scene.environment !== undefined) {
       const environment = scene.environment;
       if (

@@ -63,6 +63,7 @@ import {
 } from "./model";
 import type {
   ActorPath,
+  FloorFinish,
   ItemKind,
   MannequinJoints,
   Project,
@@ -103,6 +104,8 @@ import {
   moveSharedCorner,
   planRooms,
   rectangularRoom,
+  roomFinishFor,
+  setRoomFinish,
   polygonRoom,
   splitWall,
 } from "./floorplan";
@@ -285,6 +288,10 @@ function App() {
     .map((id) => stageScene.items.find((item) => item.id === id))
     .filter((item): item is SceneItem => !!item);
   const planRoomList = useMemo(() => planRooms(scene.items), [scene.items]);
+  const planRoomFinishes = useMemo(
+    () => planRoomList.map((room) => roomFinishFor(room, scene.roomFinishes)),
+    [planRoomList, scene.roomFinishes],
+  );
   const selectedPowerSource = stageScene.items.find(
     (item) => item.id === selected?.powerSourceId,
   );
@@ -412,6 +419,17 @@ function App() {
         ...patch,
       },
     }));
+  }
+
+  function updateRoomFinish(roomIndex: number, finish: FloorFinish) {
+    updateScene((current) => {
+      const room = planRooms(current.items)[roomIndex];
+      if (!room) return current;
+      return {
+        ...current,
+        roomFinishes: setRoomFinish(current.roomFinishes, room, finish),
+      };
+    });
   }
 
   function updateItem(id: string, patch: Partial<SceneItem>) {
@@ -1849,6 +1867,36 @@ function App() {
                 m
               </strong>
             </div>
+            {planRoomList.length > 0 && (
+              <section
+                className="room-finishes"
+                aria-label="Room floor finishes"
+              >
+                <h4>Room floors</h4>
+                {planRoomList.map((room, index) => (
+                  <label key={`${room.center.x}-${room.center.z}-${room.area}`}>
+                    <span>
+                      Room {index + 1} · {room.area.toFixed(1)} m²
+                    </span>
+                    <select
+                      aria-label={`Room ${index + 1} floor finish`}
+                      value={planRoomFinishes[index]}
+                      onChange={(event) =>
+                        updateRoomFinish(
+                          index,
+                          event.target.value as FloorFinish,
+                        )
+                      }
+                    >
+                      <option value="timber">Timber</option>
+                      <option value="tile">Tile</option>
+                      <option value="concrete">Concrete</option>
+                      <option value="stone">Stone</option>
+                    </select>
+                  </label>
+                ))}
+              </section>
+            )}
           </div>
           <div className="section-title">
             <span>

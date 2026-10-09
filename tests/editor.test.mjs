@@ -43,6 +43,8 @@ import {
   moveSharedCorner,
   planRooms,
   rectangularRoom,
+  roomFinishFor,
+  setRoomFinish,
   polygonRoom,
   splitWall,
 } from "../src/floorplan.ts";
@@ -72,6 +74,61 @@ test("rectangular rooms share walls and report enclosed floor area", () => {
       .sort((a, b) => a - b),
     [6, 12],
   );
+});
+
+test("room finishes survive wall edits and portable project roundtrips", () => {
+  const first = rectangularRoom([], { x: 0, z: 0 }, { x: 4, z: 3 });
+  const walls = rectangularRoom(first, { x: 4, z: 0 }, { x: 7, z: 3 });
+  const [left, right] = planRooms(walls).sort(
+    (a, b) => a.center.x - b.center.x,
+  );
+  const finishes = setRoomFinish(
+    setRoomFinish([], left, "tile"),
+    right,
+    "concrete",
+  );
+  const moved = moveSharedCorner(walls, { x: 4, z: 0 }, { x: 4.5, z: 0 });
+  const movedRooms = planRooms(moved).sort((a, b) => a.center.x - b.center.x);
+  assert.deepEqual(
+    movedRooms.map((room) => roomFinishFor(room, finishes)),
+    ["tile", "concrete"],
+  );
+  const split = splitWall(moved, moved[0].id);
+  assert.deepEqual(
+    planRooms(split)
+      .sort((a, b) => a.center.x - b.center.x)
+      .map((room) => roomFinishFor(room, finishes)),
+    ["tile", "concrete"],
+  );
+  const divided = insertPlanWall(
+    first,
+    wallBetween({ x: 2, z: 0 }, { x: 2, z: 3 }, 5),
+  );
+  const halves = planRooms(divided).sort((a, b) => a.center.x - b.center.x);
+  const customized = setRoomFinish(
+    setRoomFinish([], planRooms(first)[0], "tile"),
+    halves[0],
+    "stone",
+  );
+  assert.deepEqual(
+    halves.map((room) => roomFinishFor(room, customized)),
+    ["stone", "tile"],
+  );
+  const project = sampleProject();
+  project.scenes[0].roomFinishes = finishes;
+  assert.equal(isProject(JSON.parse(JSON.stringify(project))), true);
+  assert.match(
+    floorplanSVG({
+      ...project.scenes[0],
+      items: divided,
+      roomFinishes: customized,
+    }),
+    /fill="#c9bda7"/,
+  );
+  assert.equal(isProject(sampleProject()), true);
+  const invalid = structuredClone(project);
+  invalid.scenes[0].roomFinishes[0].points[0].x = "broken";
+  assert.equal(isProject(invalid), false);
 });
 
 test("shaped rooms close through shared and partially overlapping walls", () => {
